@@ -6,7 +6,7 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.0.2';
+const APP_VERSION = '2.0.4';
 const markReady = () => { window.__LMS_READY = true; };
 
 /* ---------------------------------------------------------------- state */
@@ -1795,7 +1795,7 @@ function assignStudentHTML(d) {
       <div class="gi"><span class="k">Jenis kiriman</span><span class="v">${types.map(t => t === 'text' ? 'Teks daring' : 'Unggah berkas (maks ' + (cfg.max_files || 3) + ')').join(' · ')}</span></div>
     </div>
     ${s && (s.text || (s.files && s.files.length)) ? `<div style="margin-top:16px">${s.text ? `<div class="lbl">Teks daring</div><div class="card glass flat rich" style="padding:16px;margin-bottom:12px">${sanitize(s.text)}</div>` : ''}${s.files && s.files.length ? `<div class="lbl">Berkas</div><div class="files">${s.files.map(fileLinkRow).join('')}</div>` : ''}</div>` : ''}
-    <div class="row" style="justify-content:center;margin-top:18px;flex-wrap:wrap">${d.canSubmit ? `<button class="btn btn-primary btn-lg" data-act="subOpen">${ic(submitted ? 'edit' : 'upload', 'sm')} ${submitted ? 'Edit kiriman' : 'Tambah kiriman'}</button>` : `<span class="chip" style="height:32px;padding:0 14px">${ic('info')} ${esc(d.reason)}</span>`}</div>
+    <div class="row" style="justify-content:center;margin-top:18px;flex-wrap:wrap">${d.canSubmit ? `<button class="btn btn-primary btn-lg" data-act="subOpen">${ic(submitted ? 'edit' : 'upload', 'sm')} ${submitted ? 'Edit kiriman' : 'Kirim tugas'}</button>` : `<span class="chip" style="height:32px;padding:0 14px">${ic('info')} ${esc(d.reason)}</span>`}</div>
   </section>
   ${graded || (s && s.feedback) ? `<section class="card glass"><div class="card-h"><h3>${ic('award')} Umpan balik</h3></div><div class="row" style="gap:18px;align-items:center;flex-wrap:wrap">${ringBox(pct, 92, `<div style="text-align:center;line-height:1.05"><div style="font-size:24px">${fNum(s.grade)}</div><div style="font-size:11px;color:var(--text-2);font-weight:600">dari ${fNum(m.max_grade)}</div></div>`, pct >= 75 ? 'var(--green)' : pct >= 55 ? 'var(--orange)' : 'var(--red)')}<div class="grow" style="min-width:200px"><div class="group"><div class="gi"><span class="k">Dinilai pada</span><span class="v">${fDT(s.graded_at)}</span></div><div class="gi"><span class="k">Dinilai oleh</span><span class="v">${esc(s.graded_by || '—')}</span></div></div></div></div>${s.feedback ? `<div class="lbl" style="margin-top:16px">Komentar guru</div><div class="card glass flat rich" style="padding:16px">${sanitize(s.feedback)}</div>` : ''}</section>` : ''}`;
 }
@@ -1807,7 +1807,7 @@ function openSubmitForm() {
     ${types.indexOf('file') >= 0 ? `<div class="field"><label class="lbl">Berkas (maks ${cfg.max_files || 3})</label>${existing.length ? `<div class="files" id="oldFiles" style="margin:0 0 10px">${existing.map(f => fileRow(f, `<button type="button" class="btn btn-sm" data-keep="${f.id}">Hapus</button>`)).join('')}</div>` : ''}${dropzone('files', { max: cfg.max_files || 3 })}</div>` : ''}
     <div class="hint">${ic('info', 'xs')} Kiriman dapat diubah selama belum dinilai${d.module.due_date ? ' dan sebelum batas waktu' : ''}.</div></div>`;
   sheet({
-    title: sub && sub.status === 'submitted' ? 'Edit kiriman' : 'Tambah kiriman', ok: 'Kirim', size: 'lg', body,
+    title: sub && sub.status === 'submitted' ? 'Edit kiriman' : 'Kirim tugas', ok: 'Kirim', size: 'lg', body,
     onMount: s => {
       const of = $('#oldFiles', s.el);
       if (of) of.addEventListener('click', e => {

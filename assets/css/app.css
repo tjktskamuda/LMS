@@ -696,6 +696,8 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size
 .tf { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .tf .opt { justify-content: center; font-weight: 700; font-size: 16px; padding: 18px; }
 .att-foot { display: flex; justify-content: space-between; gap: 10px; margin-top: 16px; }
+.att-foot { flex-wrap: wrap; }
+@media (max-width: 520px) { .att-foot .btn { flex: 1 1 auto; justify-content: center; } }
 .rv-badge { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 99px; font-size: 13px; font-weight: 700; }
 .rv-badge.ok { background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green-t); }
 .rv-badge.bad { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red-t); }

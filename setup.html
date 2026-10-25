@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Pasang LMS Sekolah</title>
+  <meta name="description" content="Panduan memasang backend Google Apps Script untuk LMS Sekolah.">
+  <link rel="icon" href="assets/img/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/app.css?v=2.0.0">
+  <script>
+    (function () {
+      var p = {}; try { p = JSON.parse(localStorage.getItem('lms_pref') || '{}') || {}; } catch (e) {}
+      var dark = p.theme === 'dark' || (p.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-wall', p.wall || 'aurora');
+    })();
+  </script>
+  <style>
+    body { overflow-y: auto; }
+    .su { max-width: 860px; margin: 0 auto; padding-block: 40px 80px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+    .su .ph { margin-bottom: 18px; }
+    .su .ph p { margin: 8px 0 0; color: var(--text-2); max-width: 60ch; font-size: 16px; line-height: 1.5; }
+    .flow { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+    .flow .node { flex: 1 1 200px; padding: 14px 16px; border-radius: 18px; min-width: 0; }
+    .flow .node b { display: block; font-size: 15px; }
+    .flow .node small { color: var(--text-2); font-size: 13px; }
+    .flow .node code { font-size: 12.5px; }
+    .flow .arr { align-self: center; color: var(--text-3); font-weight: 700; }
+    @media (max-width: 640px) { .flow .arr { display: none; } }
+    ol.steps { list-style: none; margin: 0; padding: 0; counter-reset: s; display: grid; gap: 14px; }
+    ol.steps > li { counter-increment: s; position: relative; padding: 20px 20px 20px 66px; border-radius: var(--r-lg); }
+    ol.steps > li::before { content: counter(s); position: absolute; left: 18px; top: 18px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; color: #fff; background: linear-gradient(160deg, #5ac8fa, #007aff); box-shadow: inset 0 1px 0 rgba(255,255,255,.4); }
+    @media (max-width: 560px) { ol.steps > li { padding: 62px 16px 18px; } ol.steps > li::before { left: 16px; top: 16px; } }
+    .steps h2 { font-size: 19px; margin: 3px 0 8px; letter-spacing: -.02em; }
+    .steps p, .steps li li { color: var(--text-2); line-height: 1.55; font-size: 15px; }
+    .steps p { margin: 6px 0; }
+    .steps ul { margin: 6px 0; padding-left: 20px; display: grid; gap: 4px; }
+    .steps b, .steps strong { color: var(--text); }
+    kbd { font: 600 12px ui-monospace, Menlo, Consolas, monospace; padding: 1px 6px; border-radius: 6px; background: var(--fill); border: 1px solid var(--sep); }
+    code { font: 500 13px ui-monospace, Menlo, Consolas, monospace; background: var(--fill); padding: 1px 6px; border-radius: 6px; }
+    pre.code { margin: 8px 0 0; padding: 12px 14px; border-radius: 14px; background: var(--input-bg); box-shadow: inset 0 0 0 .5px var(--sep); font: 12.5px/1.6 ui-monospace, Menlo, Consolas, monospace; overflow-x: auto; white-space: pre; }
+    .acts { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 12px 0 6px; }
+    .meta { font: 500 12.5px ui-monospace, Menlo, Consolas, monospace; color: var(--text-3); }
+    .ok-box { border-radius: 16px; padding: 14px 16px; margin-top: 12px; background: color-mix(in srgb, var(--green, #34c759) 14%, transparent); }
+    .ok-box p { color: var(--text) !important; }
+    .manual { margin-top: 10px; }
+    .manual textarea { width: 100%; min-height: 120px; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+    .faq { display: grid; gap: 10px; }
+    .faq details { padding: 14px 16px; border-radius: 16px; }
+    .faq summary { cursor: pointer; font-weight: 700; }
+    .faq details p { color: var(--text-2); margin: 8px 0 0; line-height: 1.55; }
+    .sec-h { font-size: 22px; letter-spacing: -.02em; margin: 34px 4px 12px; }
+    .foot-links { margin-top: 30px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .toast-lite { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 16px); opacity: 0; transition: .25s; padding: 11px 16px; border-radius: 14px; font-weight: 600; z-index: 20; max-width: calc(100% - 32px); text-align: center; pointer-events: none; }
+    .toast-lite.show { opacity: 1; transform: translate(-50%, 0); }
+  </style>
+</head>
+<body>
+  <div id="wall" aria-hidden="true"><div class="b b1"></div><div class="b b2"></div><div class="b b3"></div><div class="b b4"></div></div>
+  <main class="su">
+    <header class="ph"><div>
+      <h1>Pasang LMS Sekolah</h1>
+      <p>Tampilan LMS sudah berjalan di GitHub Pages. Halaman ini memandu Anda memasang <b>backend</b> (satu file <code>Code.gs</code> di Google Apps Script) yang menyimpan data di <b>Google Sheets</b>. Waktu yang dibutuhkan ±10 menit, cukup sekali.</p>
+    </div></header>
+
+    <div class="flow" aria-label="Arsitektur">
+      <div class="node glass"><b>Tampilan</b><small>GitHub Pages · repo <code>LMS</code></small></div>
+      <span class="arr">→</span>
+      <div class="node glass"><b>Backend API</b><small>Google Apps Script · <code>Code.gs</code></small></div>
+      <span class="arr">→</span>
+      <div class="node glass"><b>Database</b><small>Google Sheets · 14 tab otomatis</small></div>
+    </div>
+
+    <ol class="steps">
+      <li class="glass">
+        <h2>Siapkan Google Sheet untuk database</h2>
+        <p>Buka <a href="https://sheets.new" target="_blank" rel="noopener">sheets.new</a> (spreadsheet kosong), beri nama mis. <b>Database LMS</b>. Lalu menu <b>Ekstensi → Apps Script</b>. Kerjakan dari laptop/komputer.</p>
+      </li>
+      <li class="glass">
+        <h2>Tempel kode backend</h2>
+        <div class="acts">
+          <button type="button" class="btn btn-primary" id="copyCode">Salin Code.gs</button>
+          <a class="btn btn-glass" href="backend/Code.gs" target="_blank" rel="noopener">Lihat kode</a>
+          <span class="meta" id="codeMeta">memuat…</span>
+        </div>
+        <p>Di editor Apps Script: klik file <b>Code.gs</b> → <kbd>Ctrl</kbd>+<kbd>A</kbd> → <kbd>Ctrl</kbd>+<kbd>V</kbd> → <kbd>Ctrl</kbd>+<kbd>S</kbd>. <b>Tidak perlu membuat file HTML apa pun.</b></p>
+        <p id="codeCheck">Setelah ditempel, gulir ke paling bawah: nomor baris terakhir harus sama dengan jumlah baris di atas.</p>
+        <div class="manual" id="manual" hidden>
+          <p class="err-msg">Browser tidak mengizinkan salin otomatis. Seluruh kode sudah tersorot di kotak ini — tekan <kbd>Ctrl</kbd>+<kbd>C</kbd>.</p>
+          <textarea class="input" id="manualTa" readonly aria-label="Isi Code.gs"></textarea>
+        </div>
+      </li>
+      <li class="glass">
+        <h2>Jalankan setup</h2>
+        <ul>
+          <li>Di toolbar editor, pilih fungsi <code>setup</code> → klik <b>Jalankan</b>.</li>
+          <li>Muncul permintaan izin: <b>Tinjau izin</b> → pilih akun → <b>Lanjutan</b> → <b>Buka (tidak aman)</b> → <b>Izinkan</b>. Ini wajar untuk skrip buatan sendiri.</li>
+          <li>Semua tab database dibuat otomatis. Opsional: jalankan <code>isiDataContoh</code> untuk kursus, guru, dan siswa contoh.</li>
+        </ul>
+      </li>
+      <li class="glass">
+        <h2>Terapkan sebagai aplikasi web</h2>
+        <ul>
+          <li><b>Terapkan → Deployment baru</b> → ikon roda gigi → <b>Aplikasi web</b>.</li>
+          <li>Jalankan sebagai: <b>Saya</b> · Yang memiliki akses: <b>Siapa saja</b> → <b>Terapkan</b>.</li>
+          <li>Salin <b>URL aplikasi web</b> (diawali <code>https://script.google.com/</code>, berakhiran <code>/exec</code>).</li>
+        </ul>
+      </li>
+      <li class="glass">
+        <h2>Hubungkan tampilan ke backend</h2>
+        <div class="field">
+          <label class="lbl" for="apiUrl">URL aplikasi web Apps Script</label>
+          <input class="input" id="apiUrl" inputmode="url" autocapitalize="none" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec">
+        </div>
+        <div class="acts"><button type="button" class="btn btn-primary" id="testBtn">Uji koneksi</button><span class="err-msg" id="testErr" hidden></span></div>
+        <div class="ok-box" id="okBox" hidden>
+          <p><b id="okText">Terhubung.</b></p>
+          <p>Simpan URL ini <b>sekali</b> di file <code>assets/js/config.js</code> agar semua guru & siswa langsung terhubung:</p>
+          <pre class="code" id="cfgText"></pre>
+          <div class="acts">
+            <button type="button" class="btn btn-tinted btn-sm" id="copyCfg">Salin isi config.js</button>
+            <a class="btn btn-glass btn-sm" id="editCfg" target="_blank" rel="noopener" href="#">Buka config.js di GitHub</a>
+            <a class="btn btn-glass btn-sm" id="openHere" href="index.html">Pakai di browser ini saja</a>
+          </div>
+          <p>Di GitHub: klik ikon pensil (Edit) → hapus semua isinya → tempel → <b>Commit changes</b>. Situs diperbarui dalam ±1 menit.</p>
+        </div>
+      </li>
+      <li class="glass">
+        <h2>Masuk dan amankan akun admin</h2>
+        <p>Buka <a href="index.html">halaman LMS</a>, masuk dengan <code>admin</code> / <code>admin123</code>, lalu segera ganti password di menu <b>Profil</b>.</p>
+      </li>
+    </ol>
+
+    <h2 class="sec-h">Memperbarui</h2>
+    <div class="faq">
+      <details class="glass" open><summary>Saat ada Code.gs versi baru</summary>
+        <p>Tempel Code.gs baru seperti langkah 2, lalu <b>Terapkan → Kelola deployment</b> → ikon pensil → Versi: <b>Versi baru</b> → <b>Terapkan</b>. URL tetap sama, jadi config.js tidak perlu diubah. Tanpa membuat versi baru, perubahan Code.gs tidak berlaku.</p></details>
+      <details class="glass"><summary>Tampilan (frontend)</summary>
+        <p>Tampilan diambil langsung dari repo GitHub. Setiap perubahan di repo otomatis tayang dalam ±1 menit; tidak ada yang perlu dilakukan di Apps Script.</p></details>
+    </div>
+
+    <h2 class="sec-h">Masalah umum</h2>
+    <div class="faq">
+      <details class="glass"><summary>“Tidak dapat terhubung ke server”</summary>
+        <p>Pastikan akses deployment <b>Siapa saja</b> (bukan “Siapa saja yang memiliki akun Google”) dan URL berakhiran <code>/exec</code>, bukan <code>/dev</code>. Akun Google Workspace sekolah kadang tidak menyediakan pilihan “Siapa saja”; gunakan akun Gmail biasa untuk memasang backend.</p></details>
+      <details class="glass"><summary>“Server membalas halaman web, bukan data”</summary>
+        <p>URL yang ditempel bukan URL aplikasi web, atau deployment belum diberi izin. Ulangi langkah 3–4 dan salin URL dari jendela deployment.</p></details>
+      <details class="glass"><summary>Peringatan “versi server tidak cocok”</summary>
+        <p>Code.gs di Apps Script lebih lama dari tampilan. Salin ulang Code.gs dari halaman ini, lalu buat versi deployment baru.</p></details>
+      <details class="glass"><summary>Lupa password admin</summary>
+        <p>Di Google Sheet, tab <b>Users</b>: hapus baris akun admin. Lalu jalankan fungsi <code>setup</code> — akun <code>admin</code> / <code>admin123</code> dibuat ulang.</p></details>
+      <details class="glass"><summary>Memeriksa backend</summary>
+        <p>Jalankan fungsi <code>cekInstalasi</code> di editor Apps Script. Log eksekusi menampilkan status spreadsheet, tab database, akun admin, dan URL aplikasi web.</p></details>
+    </div>
+
+    <div class="foot-links"><a class="btn btn-primary" href="index.html">Buka LMS</a><a class="btn btn-glass" href="demo.html">Coba demo (tanpa backend)</a></div>
+  </main>
+  <div class="toast-lite glass thick" id="toast" role="status"></div>
+
+  <script>
+  (function () {
+    'use strict';
+    var $ = function (s) { return document.querySelector(s); };
+    var API_RE = /^https:\/\/script\.google\.com\/(?:a\/macros\/[^/]+|macros)\/s\/[\w-]{20,}\/(?:exec|dev)$/;
+    var code = null, tt;
+    function toast(m) { var t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(tt); tt = setTimeout(function () { t.classList.remove('show'); }, 2600); }
+    function copy(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text).then(function () { return true; }, legacy);
+      return Promise.resolve(legacy());
+      function legacy() {
+        try { var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); var ok = document.execCommand('copy'); ta.remove(); return ok; } catch (e) { return false; }
+      }
+    }
+    var codeReady = fetch('backend/Code.gs?v=2.0.0', { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }).then(function (t) {
+      code = t.replace(/\s+$/, '');
+      var lines = code.split('\n'), m = code.match(/VERSION:\s*'([\d.]+)'/);
+      $('#codeMeta').textContent = lines.length.toLocaleString('id-ID') + ' baris · ' + Math.round(code.length / 1024) + ' KB · versi ' + (m ? m[1] : '?');
+      $('#codeCheck').innerHTML = 'Setelah ditempel, gulir ke paling bawah: nomor baris terakhir harus <b>' + lines.length.toLocaleString('id-ID') + '</b> dengan isi <code>' + lines[lines.length - 1].replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }) + '</code>.';
+      return code;
+    }).catch(function (e) { $('#codeMeta').textContent = 'Gagal memuat kode (' + e.message + '). Buka “Lihat kode”, lalu salin dari sana.'; });
+    $('#copyCode').addEventListener('click', function () {
+      if (!code) { toast('Kode masih dimuat, coba lagi sebentar.'); return; }
+      copy(code).then(function (ok) {
+        if (ok) { toast('Code.gs tersalin (' + code.split('\n').length.toLocaleString('id-ID') + ' baris). Tempel di Apps Script.'); return; }
+        var box = $('#manual'), ta = $('#manualTa'); box.hidden = false; ta.value = code; ta.focus(); ta.select();
+      });
+    });
+    function repoInfo() {
+      var h = location.hostname, seg = location.pathname.split('/').filter(Boolean);
+      if (/\.github\.io$/.test(h)) return { owner: h.split('.')[0], repo: seg[0] && !/\.html$/.test(seg[0]) ? seg[0] : h };
+      return { owner: 'tjktskamuda', repo: 'LMS' };
+    }
+    var saved = ''; try { saved = JSON.parse(localStorage.getItem('lms_api_url') || '""') || ''; } catch (e) {}
+    if (saved) $('#apiUrl').value = saved;
+    $('#testBtn').addEventListener('click', function () {
+      var url = $('#apiUrl').value.trim().replace(/[?#].*$/, '').replace(/\/+$/, ''), err = $('#testErr'), btn = $('#testBtn');
+      err.hidden = true; $('#okBox').hidden = true;
+      function fail(m) { err.textContent = m; err.hidden = false; }
+      if (!API_RE.test(url)) { fail('Alamat belum benar: harus diawali https://script.google.com/ dan berakhiran /exec.'); return; }
+      btn.classList.add('busy');
+      fetch(url, { method: 'POST', redirect: 'follow', credentials: 'omit', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'ping', payload: {} }) })
+        .then(function (r) { return r.text(); }, function () { throw new Error('Tidak dapat terhubung. Pastikan akses deployment “Siapa saja” dan URL berakhiran /exec.'); })
+        .then(function (t) {
+          var r; try { r = JSON.parse(t); } catch (e) { throw new Error('Server membalas halaman web, bukan data. Periksa URL dan izin deployment.'); }
+          if (!r.ok) throw new Error(r.error || 'Server menolak permintaan.');
+          try { localStorage.setItem('lms_api_url', JSON.stringify(url)); } catch (e) {}
+          $('#okText').textContent = 'Terhubung ke ' + (r.data.site_name || 'LMS') + ' — backend v' + r.data.version + (/\/dev$/.test(url) ? ' (URL /dev hanya bisa dipakai pemilik skrip; gunakan URL /exec untuk siswa)' : '') + '.';
+          var ri = repoInfo();
+          $('#cfgText').textContent = "window.LMS_CONFIG = {\n  API_URL: '" + url + "'\n};";
+          $('#editCfg').href = 'https://github.com/' + ri.owner + '/' + ri.repo + '/edit/main/assets/js/config.js';
+          $('#okBox').hidden = false;
+        })
+        .catch(function (e) { fail(e.message); })
+        .then(function () { btn.classList.remove('busy'); });
+    });
+    $('#copyCfg').addEventListener('click', function () {
+      var txt = '/* Konfigurasi LMS Sekolah — URL backend Apps Script */\n' + $('#cfgText').textContent + '\n';
+      copy(txt).then(function (ok) { toast(ok ? 'Isi config.js tersalin.' : 'Salin manual teks di atas (Ctrl+C).'); });
+    });
+    void codeReady;
+  })();
+  </script>
+</body>
+</html>

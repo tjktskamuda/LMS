@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>LMS Sekolah</title>
+  <meta name="description" content="Learning Management System sekolah — kursus, tugas, kuis, forum, dan nilai.">
+  <meta name="theme-color" content="#e9eefb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0d14" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="assets/img/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/app.css?v=2.0.0">
+</head>
+<body>
+  <div id="wall" aria-hidden="true"><div class="b b1"></div><div class="b b2"></div><div class="b b3"></div><div class="b b4"></div></div>
+  <div id="root"></div>
+  <div id="layer"></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <svg id="lgDefs" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"></svg>
+  <noscript><div style="max-width:520px;margin:15vh auto;padding:24px;border-radius:24px;background:#fff;font:16px/1.5 sans-serif">Aktifkan JavaScript di browser Anda untuk membuka LMS.</div></noscript>
+
+  <!-- Penjaga: bila aplikasi gagal dimuat, tampilkan penyebabnya (bukan layar kosong). -->
+  <script>
+  (function () {
+    var errs = [], shown = false;
+    function msgOf(x) { return String((x && (x.message || (x.reason && x.reason.message) || x.reason)) || x || 'Kesalahan tidak dikenal'); }
+    window.addEventListener('error', function (e) {
+      if (!e || (!e.message && !e.error)) return;
+      errs.push(msgOf(e.error || e) + (e.filename ? ' — ' + String(e.filename).split('/').pop().split('?')[0] + ':' + e.lineno : ''));
+      setTimeout(function () { check(false); }, 1500);
+    });
+    window.addEventListener('unhandledrejection', function (e) { errs.push(msgOf(e && e.reason)); });
+    function h(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function check(force) {
+      if (shown || (window.__LMS_READY && !force)) return;
+      shown = true;
+      var loaded = !!window.__LMS_LOADED, root = document.getElementById('root') || document.body;
+      var st = document.createElement('style');
+      st.textContent = '.lmsx{max-width:580px;margin:10vh auto;padding:26px;border-radius:28px;background:rgba(255,255,255,.82);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);box-shadow:0 20px 50px -20px rgba(30,40,90,.35);color:#1c1c1e;font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;position:relative;z-index:5}' +
+        '.lmsx h1{font-size:22px;margin:0 0 6px}.lmsx p{margin:8px 0;color:#3c3c43}.lmsx pre{white-space:pre-wrap;word-break:break-word;background:rgba(255,59,48,.08);color:#c0261d;padding:10px 12px;border-radius:12px;font:12.5px/1.45 ui-monospace,Menlo,Consolas,monospace;max-height:160px;overflow:auto}' +
+        '.lmsx button{font-weight:600;font-size:15px;border:0;border-radius:12px;padding:11px 16px;background:#007aff;color:#fff;cursor:pointer}' +
+        '@media (prefers-color-scheme:dark){.lmsx{background:rgba(30,30,34,.85);color:#f2f2f7}.lmsx p{color:#d1d1d6}.lmsx pre{color:#ff8a80}}';
+      document.head.appendChild(st);
+      root.innerHTML = '<div class="lmsx"><h1>⚠️ ' + (loaded ? 'Aplikasi gagal dijalankan' : 'File aplikasi tidak termuat') + '</h1>' +
+        '<p>' + (loaded ? 'Terjadi kesalahan saat memulai aplikasi di browser ini.' : 'Periksa koneksi internet Anda, lalu muat ulang halaman.') + '</p>' +
+        '<p>Jika masalah berlanjut, coba browser lain (Chrome/Edge/Safari terbaru) atau hubungi admin sekolah.</p>' +
+        (errs.length ? '<pre>' + h(errs.slice(0, 4).join('\n')) + '</pre>' : '') +
+        '<p><button type="button" onclick="location.reload()">Muat ulang</button></p></div>';
+    }
+    window.__LMS_FATAL = function (e) { errs.push(msgOf(e)); shown = false; check(true); };
+    function later() { setTimeout(function () { check(false); }, window.__LMS_GUARD_MS || 6000); }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', later); else later();
+  })();
+  </script>
+  <script src="assets/js/config.js?v=2.0.0"></script>
+  <script src="assets/js/app.js?v=2.0.0"></script>
+</body>
+</html>

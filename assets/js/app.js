@@ -6,7 +6,7 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.0.1';
+const APP_VERSION = '2.0.2';
 const markReady = () => { window.__LMS_READY = true; };
 
 /* ---------------------------------------------------------------- state */
@@ -168,7 +168,7 @@ const TYPES = {
   page: { name: 'Halaman', icon: 'doc', p: 'content', group: 'res', desc: 'Materi berupa teks, gambar, dan video yang ditulis langsung.' },
   file: { name: 'Berkas', icon: 'clip', p: 'content', group: 'res', desc: 'Unggah PDF, PowerPoint, Word, gambar, atau berkas lain.' },
   url: { name: 'Tautan URL', icon: 'link', p: 'content', group: 'res', desc: 'Tautan ke situs web, video YouTube, atau Google Drive.' },
-  label: { name: 'Teks & Media', icon: 'type', p: 'interface', group: 'res', desc: 'Teks atau media yang tampil langsung di halaman kursus.' }
+  label: { name: 'Teks & Media', icon: 'type', p: 'interface', group: 'res', desc: 'Teks atau media yang tampil langsung di halaman mata pelajaran.' }
 };
 const QTYPES = [['mc', 'Pilihan Ganda'], ['multi', 'PG Kompleks'], ['tf', 'Benar/Salah'], ['short', 'Isian Singkat']];
 const QTL = { mc: 'Pilihan ganda', multi: 'PG kompleks', tf: 'Benar/Salah', short: 'Isian singkat' };
@@ -987,7 +987,7 @@ function onLoggedIn(r) {
   if (!location.hash || location.hash === '#' || location.hash === '#/') go('/dashboard', true); else route();
 }
 async function logout() {
-  const ok = await ask({ title: 'Keluar dari akun?', message: 'Anda perlu masuk kembali untuk mengakses kursus.', ok: 'Keluar', danger: true, icon: 'logout' });
+  const ok = await ask({ title: 'Keluar dari akun?', message: 'Anda perlu masuk kembali untuk mengakses mata pelajaran.', ok: 'Keluar', danger: true, icon: 'logout' });
   if (!ok) return;
   try { await call('logout'); } catch (e) { /* abaikan */ }
   S.user = { id: 0 };
@@ -997,8 +997,8 @@ async function logout() {
 function navItems() {
   const items = [
     { path: '/dashboard', label: 'Dasbor', icon: 'grid', c: ['#64d2ff', '#007aff'] },
-    { path: '/courses', label: 'Kursus Saya', icon: 'book', c: ['#ffb35c', '#ff7a1f'] },
-    { path: '/catalog', label: 'Katalog Kursus', icon: 'layers', c: ['#5ee07f', '#1aa84a'] },
+    { path: '/courses', label: 'Mapel Saya', icon: 'book', c: ['#ffb35c', '#ff7a1f'] },
+    { path: '/catalog', label: 'Katalog Mapel', icon: 'layers', c: ['#5ee07f', '#1aa84a'] },
     { path: '/calendar', label: 'Kalender', icon: 'calendar', c: ['#ff7a8a', '#ff3b30'] },
     { path: '/grades', label: 'Nilai', icon: 'chart', c: ['#c58bff', '#8a3ff0'] }
   ];
@@ -1007,7 +1007,7 @@ function navItems() {
   return items;
 }
 function tabItems() {
-  const t = [['/dashboard', 'Beranda', 'grid'], ['/courses', 'Kursus', 'book'], ['/calendar', 'Kalender', 'calendar']];
+  const t = [['/dashboard', 'Beranda', 'grid'], ['/courses', 'Mapel', 'book'], ['/calendar', 'Kalender', 'calendar']];
   t.push(S.user.role === 'admin' ? ['/admin', 'Admin', 'shield'] : ['/grades', 'Nilai', 'chart']);
   t.push(['/profile', 'Profil', 'user']);
   return t;
@@ -1019,7 +1019,7 @@ function renderShell() {
     <aside class="sidebar glass lg-el" data-lgb="14">
       <div class="brand" data-go="/dashboard"><div class="app-icon">${ic('grad')}</div><div class="grow" style="min-width:0"><b id="brandName" class="ellipsis">${esc(S.settings.site_name)}</b><small id="brandSchool" class="ellipsis">${esc(S.settings.school_name)}</small></div></div>
       <nav class="nav" id="nav"><i class="lens"></i>${navItems().map(n => `<button class="nav-item" data-go="${n.path}" data-nav="${n.path}"><span class="ni" style="--c1:${n.c[0]};--c2:${n.c[1]}">${ic(n.icon)}</span>${esc(n.label)}</button>`).join('')}</nav>
-      <div class="nav-sec">Kursus Saya</div>
+      <div class="nav-sec">Mapel Saya</div>
       <div class="nav-courses" id="navCourses"></div>
       <div class="side-foot"><div class="me-chip" data-act="meMenu" id="meChip"></div></div>
     </aside>
@@ -1029,7 +1029,7 @@ function renderShell() {
         <div class="tb-title" id="tbTitle"></div>
         <div class="tb-actions">
           <div id="tbExtra" class="row"></div>
-          <button class="tb-search lg-el" data-lgb="4" data-act="spot" aria-label="Cari">${ic('search', 'sm')}<span>Cari kursus, materi…</span><kbd>${mac ? '⌘' : 'Ctrl'} K</kbd></button>
+          <button class="tb-search lg-el" data-lgb="4" data-act="spot" aria-label="Cari">${ic('search', 'sm')}<span>Cari mapel, materi…</span><kbd>${mac ? '⌘' : 'Ctrl'} K</kbd></button>
           <button class="btn btn-glass btn-icon lg-el" data-lgb="3" data-act="notifs" id="bellBtn" aria-label="Notifikasi" style="position:relative">${ic('bell')}</button>
           <button class="btn btn-icon" data-act="meMenu" id="tbAvatar" aria-label="Akun" style="background:none">${av(u, 'sm')}</button>
         </div>
@@ -1051,7 +1051,7 @@ function renderNavCourses() {
   if (!box) return;
   const list = S.courses.slice(0, 14);
   box.innerHTML = list.length ? list.map(c => `<div class="nav-course ${S.curCourse === c.id ? 'on' : ''}" data-go="/course/${c.id}"><span class="dot">${coverSVG(c.id, c.cover)}</span><span class="ellipsis">${esc(c.fullname)}</span></div>`).join('') + (S.courses.length > 14 ? `<div class="nav-course" data-go="/courses"><span class="faint">Lihat semua (${S.courses.length})</span></div>` : '')
-    : `<div class="faint" style="padding:6px 12px;font-size:13px">Belum ada kursus. <a data-go="/catalog">Telusuri katalog</a></div>`;
+    : `<div class="faint" style="padding:6px 12px;font-size:13px">Belum ada mata pelajaran. <a data-go="/catalog">Telusuri katalog</a></div>`;
 }
 function renderMeChip() {
   const u = S.user, el = $('#meChip');
@@ -1148,11 +1148,11 @@ function renderDashboard(d, anim) {
   const first = String(u.name).split(/[\s,]+/)[0];
   const tiles = [];
   if (u.role === 'admin') {
-    tiles.push(tile('users', ['#64d2ff', '#007aff'], st.users, 'Pengguna', '/admin/users'), tile('book', ['#ffb35c', '#ff7a1f'], st.courses, 'Kursus', '/admin/courses'), tile('grad', ['#5ee07f', '#1aa84a'], st.students, 'Siswa', '/admin/users'), tile('inbox', ['#ff7aa2', '#f2245c'], st.toGrade, 'Perlu dinilai'));
+    tiles.push(tile('users', ['#64d2ff', '#007aff'], st.users, 'Pengguna', '/admin/users'), tile('book', ['#ffb35c', '#ff7a1f'], st.courses, 'Mapel', '/admin/courses'), tile('grad', ['#5ee07f', '#1aa84a'], st.students, 'Siswa', '/admin/users'), tile('inbox', ['#ff7aa2', '#f2245c'], st.toGrade, 'Perlu dinilai'));
   } else if (st.courses !== undefined) {
-    tiles.push(tile('book', ['#ffb35c', '#ff7a1f'], st.courses, 'Kursus diampu', '/courses'), tile('users', ['#64d2ff', '#007aff'], st.students, 'Siswa'), tile('inbox', ['#ff7aa2', '#f2245c'], st.toGrade, 'Perlu dinilai'), tile('layers', ['#c58bff', '#8a3ff0'], st.activities, 'Aktivitas'));
+    tiles.push(tile('book', ['#ffb35c', '#ff7a1f'], st.courses, 'Mapel diampu', '/courses'), tile('users', ['#64d2ff', '#007aff'], st.students, 'Siswa'), tile('inbox', ['#ff7aa2', '#f2245c'], st.toGrade, 'Perlu dinilai'), tile('layers', ['#c58bff', '#8a3ff0'], st.activities, 'Aktivitas'));
   } else {
-    tiles.push(tile('book', ['#ffb35c', '#ff7a1f'], st.myCourses, 'Kursus diikuti', '/courses'), tile('chart', ['#5ee07f', '#1aa84a'], st.progress, 'Rata-rata progres', null, '%'), tile('clock', ['#64d2ff', '#007aff'], st.pending, 'Tugas & kuis aktif'), tile('alert', ['#ff7aa2', '#f2245c'], st.overdue, 'Terlambat'));
+    tiles.push(tile('book', ['#ffb35c', '#ff7a1f'], st.myCourses, 'Mapel diikuti', '/courses'), tile('chart', ['#5ee07f', '#1aa84a'], st.progress, 'Rata-rata progres', null, '%'), tile('clock', ['#64d2ff', '#007aff'], st.pending, 'Tugas & kuis aktif'), tile('alert', ['#ff7aa2', '#f2245c'], st.overdue, 'Terlambat'));
   }
   const canCreate = u.role !== 'student';
   const recentIds = LS.get('recent_' + u.id, []);
@@ -1162,12 +1162,12 @@ function renderDashboard(d, anim) {
   const now = new Date();
   setView(`
     <div class="ph"><div><div class="eyebrow">${esc(fLong(Date.now()))}</div><h1>${greet}, ${esc(first)} 👋</h1><p>${u.role === 'student' ? 'Berikut ringkasan belajar Anda hari ini.' : 'Berikut ringkasan kelas yang Anda ampu.'}</p></div>
-      <div class="ph-actions">${canCreate ? `<button class="btn btn-primary" data-act="newCourse">${ic('plus', 'sm')} Kursus baru</button>` : `<button class="btn btn-glass" data-go="/catalog">${ic('layers', 'sm')} Katalog kursus</button>`}</div></div>
+      <div class="ph-actions">${canCreate ? `<button class="btn btn-primary" data-act="newCourse">${ic('plus', 'sm')} Mapel baru</button>` : `<button class="btn btn-glass" data-go="/catalog">${ic('layers', 'sm')} Katalog mapel</button>`}</div></div>
     <div class="grid g4 stg">${tiles.join('')}</div>
     <div class="split" style="margin-top:18px">
       <div class="stack stg">
         <section class="card glass"><div class="card-h"><h3>${ic('clock')} Linimasa</h3><div class="seg" id="tlSeg">${[['all', 'Semua'], ['7', '7 hari'], ['30', '30 hari'], ['over', 'Terlambat']].map(x => `<button class="${S.tl === x[0] ? 'on' : ''}" data-act="tlFilter" data-v="${x[0]}">${x[1]}</button>`).join('')}</div></div><div class="list" id="tlList">${timelineHTML(d.timeline)}</div></section>
-        <section class="card glass"><div class="card-h"><h3>${ic('book')} Kursus yang baru diakses</h3><button class="btn btn-plain btn-sm" data-go="/courses">Lihat semua</button></div>${recent.length ? `<div class="hscroll">${recent.map(ccard).join('')}</div>` : emptyHTML('book', 'Belum ada kursus', u.role === 'student' ? 'Daftar ke kursus melalui Katalog Kursus.' : 'Buat kursus pertama Anda.')}</section>
+        <section class="card glass"><div class="card-h"><h3>${ic('book')} Mapel yang baru diakses</h3><button class="btn btn-plain btn-sm" data-go="/courses">Lihat semua</button></div>${recent.length ? `<div class="hscroll">${recent.map(ccard).join('')}</div>` : emptyHTML('book', 'Belum ada mata pelajaran', u.role === 'student' ? 'Daftar ke mata pelajaran melalui Katalog Mapel.' : 'Buat mapel pertama Anda.')}</section>
       </div>
       <div class="stack stg">
         <section class="card glass"><div class="cal-head"><h3 style="font-size:17px">${BULAN[now.getMonth()]} ${now.getFullYear()}</h3><button class="btn btn-plain btn-sm" data-go="/calendar">Kalender</button></div>${calGrid(now.getFullYear(), now.getMonth(), evs, null, true)}</section>
@@ -1228,7 +1228,7 @@ function calGrid(y, m, events, sel, mini) {
 }
 
 /* ==========================================================================
-   KURSUS SAYA & KATALOG
+   MAPEL SAYA & KATALOG
    ========================================================================== */
 function ccard(c) {
   const pr = c.progress;
@@ -1246,17 +1246,17 @@ function ccard(c) {
       <div class="meta">${meta}</div></div></div>`;
 }
 async function pageMyCourses() {
-  setChrome({ title: 'Kursus Saya' });
+  setChrome({ title: 'Mapel Saya' });
   await swr('my', 'myCourses', {}, (d, c, refresh) => renderMyCourses(d, !refresh), () => skel('cards'));
 }
 function renderMyCourses(list, anim) {
   S.myList = list;
   const canCreate = S.user.role !== 'student', f = S.mcFilter || 'all', view = LS.get('cview', 'grid');
-  setView(`<div class="ph"><div><h1>Kursus Saya</h1><p>${list.length} kursus${S.user.role === 'admin' ? ' di situs ini' : S.user.role === 'teacher' ? ' yang Anda ampu' : ' yang Anda ikuti'}</p></div>
-    <div class="ph-actions"><button class="btn btn-glass" data-go="/catalog">${ic('layers', 'sm')} Katalog</button>${canCreate ? `<button class="btn btn-primary" data-act="newCourse">${ic('plus', 'sm')} Kursus baru</button>` : ''}</div></div>
+  setView(`<div class="ph"><div><h1>Mapel Saya</h1><p>${list.length} mapel${S.user.role === 'admin' ? ' di situs ini' : S.user.role === 'teacher' ? ' yang Anda ampu' : ' yang Anda ikuti'}</p></div>
+    <div class="ph-actions"><button class="btn btn-glass" data-go="/catalog">${ic('layers', 'sm')} Katalog</button>${canCreate ? `<button class="btn btn-primary" data-act="newCourse">${ic('plus', 'sm')} Mapel baru</button>` : ''}</div></div>
     <div class="row between" style="margin:0 2px 18px;flex-wrap:wrap;gap:10px">
       <div class="seg-wrap"><div class="seg">${[['all', 'Semua'], ['now', 'Berjalan'], ['future', 'Akan datang'], ['past', 'Selesai']].map(x => `<button class="${f === x[0] ? 'on' : ''}" data-act="mcFilter" data-v="${x[0]}">${x[1]}</button>`).join('')}</div></div>
-      <div class="row" style="gap:8px;flex:1;justify-content:flex-end;min-width:240px"><div class="inp-ic grow" style="max-width:320px">${ic('search', 'sm')}<input class="input sm" id="mcQ" placeholder="Cari kursus…" value="${esc(S.mcQ || '')}"></div>
+      <div class="row" style="gap:8px;flex:1;justify-content:flex-end;min-width:240px"><div class="inp-ic grow" style="max-width:320px">${ic('search', 'sm')}<input class="input sm" id="mcQ" placeholder="Cari mapel…" value="${esc(S.mcQ || '')}"></div>
       <div class="seg"><button class="${view === 'grid' ? 'on' : ''}" data-act="cview" data-v="grid" aria-label="Kartu">${ic('grid', 'sm')}</button><button class="${view === 'list' ? 'on' : ''}" data-act="cview" data-v="list" aria-label="Daftar">${ic('list', 'sm')}</button></div></div>
     </div>
     <div id="mcGrid"></div>`, anim);
@@ -1274,18 +1274,18 @@ function drawMyCourses(anim) {
   });
   const g = $('#mcGrid');
   g.innerHTML = list.length ? `<div class="cards stg ${LS.get('cview', 'grid') === 'list' ? 'clist' : ''}">${list.map(ccard).join('')}</div>`
-    : `<div class="card glass">${emptyHTML('book', 'Tidak ada kursus', q ? 'Tidak ada kursus yang cocok dengan pencarian.' : S.user.role === 'student' ? 'Telusuri Katalog Kursus untuk bergabung.' : 'Buat kursus baru untuk mulai mengajar.')}</div>`;
+    : `<div class="card glass">${emptyHTML('book', 'Tidak ada mata pelajaran', q ? 'Tidak ada mata pelajaran yang cocok dengan pencarian.' : S.user.role === 'student' ? 'Telusuri Katalog Mapel untuk bergabung.' : 'Buat mapel baru untuk mulai mengajar.')}</div>`;
   g.classList.toggle('no-anim', anim === false);
   afterRender(g, anim !== false);
 }
 async function pageCatalog() {
-  setChrome({ title: 'Katalog Kursus' });
+  setChrome({ title: 'Katalog Mapel' });
   await swr('catalog', 'catalog', {}, (d, c, refresh) => renderCatalog(d, !refresh), () => skel('cards'));
 }
 function renderCatalog(d, anim) {
   S.catalog = d;
   const f = S.catFilter || 'all';
-  setView(`<div class="ph"><div><div class="eyebrow">Beranda situs</div><h1>Katalog Kursus</h1><p>Semua kursus yang tersedia di ${esc(S.settings.site_name)}.</p></div></div>
+  setView(`<div class="ph"><div><div class="eyebrow">Beranda situs</div><h1>Katalog Mapel</h1><p>Semua mata pelajaran yang tersedia di ${esc(S.settings.site_name)}.</p></div></div>
     <div class="row between" style="margin:0 2px 18px;flex-wrap:wrap;gap:10px">
       <div class="seg-wrap" style="max-width:100%"><div class="seg"><button class="${f === 'all' ? 'on' : ''}" data-act="catFilter" data-v="all">Semua</button>${d.categories.map(k => `<button class="${f === k.id ? 'on' : ''}" data-act="catFilter" data-v="${k.id}">${esc(k.name)}</button>`).join('')}</div></div>
       <div class="inp-ic" style="width:min(320px,100%)">${ic('search', 'sm')}<input class="input sm" id="catQ" placeholder="Cari di katalog…" value="${esc(S.catQ || '')}"></div>
@@ -1299,7 +1299,7 @@ function drawCatalog(anim) {
   const list = d.courses.filter(c => (f === 'all' || c.category_id === f) && (!q || (c.fullname + ' ' + c.shortname).toLowerCase().indexOf(q) >= 0))
     .map(c => Object.assign({}, c, { category: cats[c.category_id] || 'Tanpa kategori', role: c.enrolled ? c.role : null }));
   const g = $('#catGrid');
-  g.innerHTML = list.length ? `<div class="cards stg">${list.map(c => ccard(Object.assign({}, c, { students: undefined, role: c.role === 'teacher' ? 'teacher' : null }))).join('')}</div>` : `<div class="card glass">${emptyHTML('layers', 'Tidak ada kursus', 'Belum ada kursus pada kategori ini.')}</div>`;
+  g.innerHTML = list.length ? `<div class="cards stg">${list.map(c => ccard(Object.assign({}, c, { students: undefined, role: c.role === 'teacher' ? 'teacher' : null }))).join('')}</div>` : `<div class="card glass">${emptyHTML('layers', 'Tidak ada mata pelajaran', 'Belum ada mata pelajaran pada kategori ini.')}</div>`;
   g.classList.toggle('no-anim', anim === false);
   afterRender(g, anim !== false);
 }
@@ -1308,20 +1308,20 @@ function drawCatalog(anim) {
 function courseFormHTML(c, isNew) {
   c = c || { visible: true, cover: Math.floor(Math.random() * COVERS.length) };
   return `<div class="form">
-    ${fInput('fullname', 'Nama lengkap kursus', c.fullname, { req: true, ph: 'mis. Koding dan Kecerdasan Artifisial' })}
+    ${fInput('fullname', 'Nama lengkap mata pelajaran', c.fullname, { req: true, ph: 'mis. Koding dan Kecerdasan Artifisial' })}
     <div class="row2">${fInput('shortname', 'Nama singkat', c.shortname, { req: true, ph: 'mis. KKA-X1' })}${fSelect('category_id', 'Kategori', [['', 'Tanpa kategori']].concat(S.categories.map(k => [k.id, k.name])), c.category_id)}</div>
-    <div class="field"><label class="lbl">Ringkasan kursus</label>${editor('summary', c.summary, { h: 110, ph: 'Deskripsi singkat kursus…' })}</div>
-    <div class="field"><label class="lbl">Sampul kursus</label><div class="covers">${COVERS.map((x, i) => `<button type="button" class="cv-opt ${i === ((+c.cover || 0) % COVERS.length) ? 'on' : ''}" data-act="pickOne" data-cv="${i}" aria-label="Sampul ${i + 1}">${coverSVG('cover-' + (c.id || 'new') + i, i)}</button>`).join('')}</div></div>
+    <div class="field"><label class="lbl">Ringkasan mapel</label>${editor('summary', c.summary, { h: 110, ph: 'Deskripsi singkat mata pelajaran…' })}</div>
+    <div class="field"><label class="lbl">Sampul mapel</label><div class="covers">${COVERS.map((x, i) => `<button type="button" class="cv-opt ${i === ((+c.cover || 0) % COVERS.length) ? 'on' : ''}" data-act="pickOne" data-cv="${i}" aria-label="Sampul ${i + 1}">${coverSVG('cover-' + (c.id || 'new') + i, i)}</button>`).join('')}</div></div>
     <div class="row2">${fInput('start_date', 'Tanggal mulai', toDateInput(c.start_date), { type: 'date' })}${fInput('end_date', 'Tanggal selesai', toDateInput(c.end_date), { type: 'date' })}</div>
-    ${fInput('enrol_key', 'Kunci pendaftaran mandiri', c.enrol_key, { ph: 'Kosongkan bila siswa didaftarkan oleh guru', hint: 'Bila diisi, siswa dapat bergabung sendiri dari Katalog Kursus dengan memasukkan kunci ini.' })}
+    ${fInput('enrol_key', 'Kunci pendaftaran mandiri', c.enrol_key, { ph: 'Kosongkan bila siswa didaftarkan oleh guru', hint: 'Bila diisi, siswa dapat bergabung sendiri dari Katalog Mapel dengan memasukkan kunci ini.' })}
     ${isNew ? fInput('sections', 'Jumlah topik awal', 4, { type: 'number', attrs: 'min="0" max="52"' }) : ''}
-    ${fSwitch('visible', 'Tampilkan kursus untuk siswa', 'Matikan untuk menyembunyikan kursus selama persiapan.', c.visible !== false)}
+    ${fSwitch('visible', 'Tampilkan mapel untuk siswa', 'Matikan untuk menyembunyikan mata pelajaran selama persiapan.', c.visible !== false)}
   </div>`;
 }
 function collectCourse(root, id) {
   const cv = $('.cv-opt.on', root);
   return {
-    id: id || undefined, fullname: need(root, 'fullname', 'Nama lengkap kursus wajib diisi.'), shortname: need(root, 'shortname', 'Nama singkat wajib diisi.'),
+    id: id || undefined, fullname: need(root, 'fullname', 'Nama lengkap mata pelajaran wajib diisi.'), shortname: need(root, 'shortname', 'Nama singkat wajib diisi.'),
     category_id: fv(root, 'category_id'), summary: edVal(root, 'summary'), cover: cv ? +cv.dataset.cv : 0,
     start_date: fromDateInput(fv(root, 'start_date')), end_date: fromDateInput(fv(root, 'end_date')), enrol_key: fv(root, 'enrol_key'),
     sections: fv(root, 'sections'), visible: fv(root, 'visible')
@@ -1329,10 +1329,10 @@ function collectCourse(root, id) {
 }
 function openCourseForm() {
   sheet({
-    title: 'Kursus baru', ok: 'Buat', size: 'lg', body: courseFormHTML(null, true),
+    title: 'Mapel baru', ok: 'Buat', size: 'lg', body: courseFormHTML(null, true),
     onOk: async sh => {
       const r = await mutate('saveCourse', collectCourse(sh.el));
-      toast('Kursus berhasil dibuat');
+      toast('Mapel berhasil dibuat');
       await refreshBoot();
       setTimeout(() => go('/course/' + r.id), 250);
     }
@@ -1340,7 +1340,7 @@ function openCourseForm() {
 }
 
 /* ==========================================================================
-   HALAMAN KURSUS
+   HALAMAN MAPEL
    ========================================================================== */
 async function pageCourse(id, tab) {
   tab = tab || 'course';
@@ -1357,7 +1357,7 @@ function renderCourse(d, tab, anim) {
   setChrome({ title: d.course.fullname, back: '/courses', extra: isT && tab === 'course' ? edit : '' });
   const sw = $('#editSw');
   if (sw) sw.addEventListener('change', () => { S.editMode = sw.checked; LS.set('edit_' + S.user.id, S.editMode); renderCourseContent(S.course, false); toast(S.editMode ? 'Mode edit aktif' : 'Mode edit nonaktif', 'info'); });
-  const tabs = [['course', 'Kursus'], ['participants', 'Peserta'], ['grades', 'Nilai'], ['announcements', 'Pengumuman']];
+  const tabs = [['course', 'Mapel'], ['participants', 'Peserta'], ['grades', 'Nilai'], ['announcements', 'Pengumuman']];
   if (isT) tabs.push(['settings', 'Pengaturan']);
   setView(`${courseHero(d)}<div class="seg-wrap ctabs"><div class="seg lg">${tabs.map(t => `<button class="${t[0] === tab ? 'on' : ''}" data-act="ctab" data-v="${t[0]}">${t[1]}</button>`).join('')}</div></div><div id="ctab"></div>`, anim);
   if (tab === 'course') renderCourseContent(d, anim);
@@ -1370,7 +1370,7 @@ function courseHero(d) {
   const c = d.course, p = d.progress;
   return `<section class="chero glass"><div class="cover">${coverSVG(c.id, c.cover)}</div>
     <div class="ch-in"><div style="min-width:0;flex:1">
-      <div class="ch-cat">${esc(d.category || 'Kursus')} · ${esc(c.shortname)}</div>
+      <div class="ch-cat">${esc(d.category || 'Mapel')} · ${esc(c.shortname)}</div>
       <h1>${esc(c.fullname)}</h1>
       <div class="ch-meta">${d.teachers && d.teachers.length ? `<span class="glass-chip"><span class="av-stack">${d.teachers.slice(0, 3).map(t => av(t, 'xs')).join('')}</span>${esc(d.teachers.map(t => t.name).join(', '))}</span>` : ''}${d.studentCount !== undefined ? `<span class="glass-chip">${ic('users', 'sm')} ${d.studentCount} siswa</span>` : ''}${!c.visible ? `<span class="glass-chip">${ic('eyeoff', 'sm')} Tersembunyi</span>` : ''}${c.end_date ? `<span class="glass-chip">${ic('calendar', 'sm')} s.d. ${fDate(c.end_date)}</span>` : ''}</div>
     </div>
@@ -1380,10 +1380,10 @@ function courseHero(d) {
 function renderEnrol(d, anim) {
   setChrome({ title: d.course.fullname, back: '/catalog' });
   setView(`${courseHero(d)}<section class="card glass" style="max-width:720px">
-    <div class="card-h"><h3>${ic('lock')} Bergabung ke kursus</h3></div>
+    <div class="card-h"><h3>${ic('lock')} Bergabung ke mapel</h3></div>
     ${d.course.summary ? `<div class="rich" style="margin-bottom:18px">${sanitize(d.course.summary)}</div>` : ''}
-    ${d.selfEnrol ? `<div class="form"><div class="field"><label class="lbl">Kunci pendaftaran</label><div class="inp-ic">${ic('key', 'sm')}<input class="input" id="enrolKey" placeholder="Masukkan kunci dari guru"></div><div class="hint">Minta kunci pendaftaran kepada guru pengampu kursus ini.</div></div><div><button class="btn btn-primary btn-lg" data-act="enrolSelf" data-id="${d.course.id}">Daftar sekarang</button></div></div>`
-    : emptyHTML('lock', 'Pendaftaran oleh guru', 'Kursus ini tidak membuka pendaftaran mandiri. Hubungi guru pengampu agar Anda didaftarkan.')}
+    ${d.selfEnrol ? `<div class="form"><div class="field"><label class="lbl">Kunci pendaftaran</label><div class="inp-ic">${ic('key', 'sm')}<input class="input" id="enrolKey" placeholder="Masukkan kunci dari guru"></div><div class="hint">Minta kunci pendaftaran kepada guru pengampu mata pelajaran ini.</div></div><div><button class="btn btn-primary btn-lg" data-act="enrolSelf" data-id="${d.course.id}">Daftar sekarang</button></div></div>`
+    : emptyHTML('lock', 'Pendaftaran oleh guru', 'Mapel ini tidak membuka pendaftaran mandiri. Hubungi guru pengampu agar Anda didaftarkan.')}
   </section>`, anim);
   const k = $('#enrolKey');
   if (k) k.addEventListener('keydown', e => { if (e.key === 'Enter') $('[data-act="enrolSelf"]').click(); });
@@ -1394,13 +1394,13 @@ function renderCourseContent(d, anim) {
   if (!box) return;
   const isT = d.role === 'teacher', edit = isT && S.editMode, col = LS.get(colKey(), {});
   const nMods = d.sections.reduce((s, x) => s + x.modules.filter(m => m.type !== 'label').length, 0);
-  const index = `<aside class="cindex glass"><h5>Indeks kursus</h5>${d.sections.map(s => `<div class="ci-sec" data-act="ciGo" data-t="sec-${s.id}">${ic('down', 'xs')}<span class="ellipsis">${esc(s.title)}</span></div>${s.modules.filter(m => m.type !== 'label').map(m => `<div class="ci-mod" data-act="ciGo" data-t="mod-${m.id}">${isT ? `<span class="tdot" data-p="${TYPES[m.type].p}"></span>` : `<span class="cdot ${m.done ? 'on' : ''}">${m.done ? ic('check') : ''}</span>`}<span class="ellipsis">${esc(m.title)}</span></div>`).join('')}`).join('')}</aside>`;
+  const index = `<aside class="cindex glass"><h5>Indeks mapel</h5>${d.sections.map(s => `<div class="ci-sec" data-act="ciGo" data-t="sec-${s.id}">${ic('down', 'xs')}<span class="ellipsis">${esc(s.title)}</span></div>${s.modules.filter(m => m.type !== 'label').map(m => `<div class="ci-mod" data-act="ciGo" data-t="mod-${m.id}">${isT ? `<span class="tdot" data-p="${TYPES[m.type].p}"></span>` : `<span class="cdot ${m.done ? 'on' : ''}">${m.done ? ic('check') : ''}</span>`}<span class="ellipsis">${esc(m.title)}</span></div>`).join('')}`).join('')}</aside>`;
   box.innerHTML = `<div class="course-layout">${index}<div>
     ${d.announcements && d.announcements[0] && Date.now() - d.announcements[0].created_at < 7 * 864e5 ? `<div class="card glass li click" data-act="openAnn" data-id="${d.announcements[0].id}" style="margin-bottom:16px;padding:14px 16px"><span class="aicon sm" data-p="interface">${ic('megaphone')}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(d.announcements[0].title)}</div><div class="ls">Pengumuman terbaru · ${rel(d.announcements[0].created_at)}</div></div>${ic('right', 'sm chev')}</div>` : ''}
     <div class="row between" style="margin:0 6px 12px"><span class="faint" style="font-size:13.5px">${d.sections.length} topik · ${nMods} aktivitas</span><div class="row" style="gap:4px"><button class="btn btn-plain btn-sm" data-act="mIndex">${ic('list', 'sm')} Indeks</button><button class="btn btn-plain btn-sm" data-act="collapseAll">${Object.keys(col).some(k => col[k]) ? 'Bentangkan semua' : 'Ciutkan semua'}</button></div></div>
     <div class="stg">${d.sections.map(s => sectionHTML(s, d, edit, col)).join('')}</div>
     ${edit ? `<button class="add-act" data-act="addSection" style="height:54px">${ic('plus')} Tambah topik</button>` : ''}
-    ${!nMods && !edit ? `<div class="card glass">${emptyHTML('book', 'Kursus masih kosong', isT ? 'Aktifkan Mode edit di kanan atas untuk menambahkan materi dan aktivitas.' : 'Guru belum menambahkan materi.')}</div>` : ''}
+    ${!nMods && !edit ? `<div class="card glass">${emptyHTML('book', 'Mapel masih kosong', isT ? 'Aktifkan Mode edit di kanan atas untuk menambahkan materi dan aktivitas.' : 'Guru belum menambahkan materi.')}</div>` : ''}
   </div></div>`;
   box.classList.toggle('no-anim', anim === false);
   afterRender(box, anim !== false);
@@ -1558,7 +1558,7 @@ async function editModule(id, after) {
 function openIndexSheet() {
   const d = S.course;
   sheet({
-    title: 'Indeks kursus', cancel: 'Tutup', body: `<div class="list">${d.sections.map(s => `<div class="tl-day">${esc(s.title)}</div>${s.modules.filter(m => m.type !== 'label').map(m => `<div class="li click" data-jump="mod-${m.id}"><span class="aicon sm" data-p="${TYPES[m.type].p}">${ic(TYPES[m.type].icon)}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(m.title)}</div></div>${d.role !== 'teacher' && m.done ? `<span class="chip green">${ic('check')}</span>` : ''}</div>`).join('') || '<div class="faint" style="padding:4px 12px">—</div>'}`).join('')}</div>`,
+    title: 'Indeks mapel', cancel: 'Tutup', body: `<div class="list">${d.sections.map(s => `<div class="tl-day">${esc(s.title)}</div>${s.modules.filter(m => m.type !== 'label').map(m => `<div class="li click" data-jump="mod-${m.id}"><span class="aicon sm" data-p="${TYPES[m.type].p}">${ic(TYPES[m.type].icon)}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(m.title)}</div></div>${d.role !== 'teacher' && m.done ? `<span class="chip green">${ic('check')}</span>` : ''}</div>`).join('') || '<div class="faint" style="padding:4px 12px">—</div>'}`).join('')}</div>`,
     onMount: s => s.body.addEventListener('click', e => { const b = e.target.closest('[data-jump]'); if (!b) return; s.close(); setTimeout(() => jumpTo(b.dataset.jump), 300); })
   });
 }
@@ -1640,7 +1640,7 @@ async function loadGradebook(d) {
   box.innerHTML = `<section class="card glass"><div class="card-h"><h3>${ic('table')} Buku nilai</h3><div class="row"><span class="faint" style="font-size:13px">${g.students.length} siswa · ${g.items.length} item penilaian</span><button class="btn btn-tinted btn-sm" data-act="gbExport">${ic('download', 'sm')} Ekspor CSV</button></div></div>
     ${g.items.length && g.students.length ? `<div class="tbl-wrap"><table class="tbl gb"><thead><tr><th class="sticky">Siswa</th>${g.items.map(it => `<th class="num"><a data-go="/mod/${it.id}" style="cursor:pointer;color:inherit" title="${esc(it.title)}">${ic(TYPES[it.type].icon, 'xs')} ${esc(it.title.length > 22 ? it.title.slice(0, 21) + '…' : it.title)}</a><div style="font-weight:500;text-transform:none;letter-spacing:0">maks ${fNum(it.max_grade)}</div></th>`).join('')}<th class="num">Total</th></tr></thead>
     <tbody>${g.students.map(s => `<tr><td class="sticky"><div class="row" style="gap:8px">${av(s, 'xs')}<div><b style="font-size:13.5px">${esc(s.name)}</b><div class="faint" style="font-size:12px">${esc(s.kelas || '')}</div></div></div></td>${g.items.map(it => { const v = g.grades[s.id][it.id]; return `<td class="num"><span class="gcell ${gClass(pctOf(v, it.max_grade))}">${v === undefined || v === null ? '–' : fNum(v)}</span></td>`; }).join('')}<td class="num"><span class="gcell ${gClass(g.totals[s.id].pct)}">${g.totals[s.id].pct === null ? '–' : fNum(g.totals[s.id].pct) + '%'}</span></td></tr>`).join('')}</tbody></table></div>`
-    : emptyHTML('table', g.items.length ? 'Belum ada siswa' : 'Belum ada item penilaian', g.items.length ? 'Daftarkan siswa terlebih dahulu.' : 'Tambahkan Tugas atau Kuis ke kursus ini.')}</section>`;
+    : emptyHTML('table', g.items.length ? 'Belum ada siswa' : 'Belum ada item penilaian', g.items.length ? 'Daftarkan siswa terlebih dahulu.' : 'Tambahkan Tugas atau Kuis ke mata pelajaran ini.')}</section>`;
 }
 function exportGradebook() {
   const g = S.gb;
@@ -1663,7 +1663,7 @@ function gradeReportHTML(g, withHead) {
   return `<section class="card glass">
     <div class="card-h">${withHead ? `<div class="row" style="cursor:pointer" data-go="/course/${g.course.id}"><span class="cover" style="width:44px;height:44px;border-radius:12px;overflow:hidden;position:relative;display:block">${coverSVG(g.course.id, g.course.cover)}</span><div><h3 style="font-size:16.5px">${esc(g.course.fullname)}</h3><div class="faint" style="font-size:12.5px">${t.graded} dari ${t.items} item sudah dinilai</div></div></div>` : `<h3>${ic('award')} Laporan nilai</h3>`}
     ${ringBox(t.pct || 0, 58, t.pct === null ? '–' : Math.round(t.pct) + '', t.pct === null ? 'var(--text-3)' : t.pct >= 75 ? 'var(--green)' : t.pct >= 55 ? 'var(--orange)' : 'var(--red)', 16)}</div>
-    ${g.items.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item penilaian</th><th class="num">Nilai</th><th class="num">Rentang</th><th class="num">Persentase</th></tr></thead><tbody>${g.items.map(it => { const p = it.grade === null ? null : it.grade / it.max_grade * 100; return `<tr class="click" data-go="/mod/${it.id}"><td><div class="row" style="gap:10px"><span class="aicon sm" data-p="${TYPES[it.type].p}">${ic(TYPES[it.type].icon)}</span><div style="min-width:0"><b style="font-size:14px">${esc(it.title)}</b>${it.feedback ? `<div class="faint ellipsis" style="font-size:12.5px;max-width:360px">💬 ${esc(plain(it.feedback))}</div>` : ''}</div></div></td><td class="num"><span class="gcell ${gClass(p)}">${it.grade === null ? '–' : fNum(it.grade)}</span></td><td class="num faint">0–${fNum(it.max_grade)}</td><td class="num">${p === null ? '–' : fNum(p) + '%'}</td></tr>`; }).join('')}<tr><td><b>Total kursus</b></td><td class="num"><b>${t.graded ? fNum(t.got) : '–'}</b></td><td class="num faint">${t.graded ? '0–' + fNum(t.max) : '–'}</td><td class="num"><b>${t.pct === null ? '–' : fNum(t.pct) + '%'}</b></td></tr></tbody></table></div>` : emptyHTML('chart', 'Belum ada item penilaian', '')}
+    ${g.items.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item penilaian</th><th class="num">Nilai</th><th class="num">Rentang</th><th class="num">Persentase</th></tr></thead><tbody>${g.items.map(it => { const p = it.grade === null ? null : it.grade / it.max_grade * 100; return `<tr class="click" data-go="/mod/${it.id}"><td><div class="row" style="gap:10px"><span class="aicon sm" data-p="${TYPES[it.type].p}">${ic(TYPES[it.type].icon)}</span><div style="min-width:0"><b style="font-size:14px">${esc(it.title)}</b>${it.feedback ? `<div class="faint ellipsis" style="font-size:12.5px;max-width:360px">💬 ${esc(plain(it.feedback))}</div>` : ''}</div></div></td><td class="num"><span class="gcell ${gClass(p)}">${it.grade === null ? '–' : fNum(it.grade)}</span></td><td class="num faint">0–${fNum(it.max_grade)}</td><td class="num">${p === null ? '–' : fNum(p) + '%'}</td></tr>`; }).join('')}<tr><td><b>Total mapel</b></td><td class="num"><b>${t.graded ? fNum(t.got) : '–'}</b></td><td class="num faint">${t.graded ? '0–' + fNum(t.max) : '–'}</td><td class="num"><b>${t.pct === null ? '–' : fNum(t.pct) + '%'}</b></td></tr></tbody></table></div>` : emptyHTML('chart', 'Belum ada item penilaian', '')}
   </section>`;
 }
 
@@ -1695,9 +1695,9 @@ function openAnnForm(a, courseId, after) {
 }
 function renderCourseSettings(d) {
   const box = $('#ctab');
-  box.innerHTML = `<section class="card glass" style="max-width:860px"><div class="card-h"><h3>${ic('sliders')} Pengaturan kursus</h3></div><div id="csForm">${courseFormHTML(Object.assign({}, d.course, { enrol_key: d.course.enrol_key }), false)}</div>
+  box.innerHTML = `<section class="card glass" style="max-width:860px"><div class="card-h"><h3>${ic('sliders')} Pengaturan mapel</h3></div><div id="csForm">${courseFormHTML(Object.assign({}, d.course, { enrol_key: d.course.enrol_key }), false)}</div>
     <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn btn-primary" data-act="csSave">Simpan perubahan</button></div></section>
-    <section class="card glass" style="max-width:860px;margin-top:16px"><div class="card-h"><h3 style="color:var(--red)">${ic('alert')} Zona berbahaya</h3></div><p class="muted" style="margin:0 0 14px">Menghapus kursus akan menghapus seluruh topik, materi, tugas, kuis, nilai, dan diskusi secara permanen.</p><button class="btn btn-danger" data-act="csDelete">${ic('trash', 'sm')} Hapus kursus ini</button></section>`;
+    <section class="card glass" style="max-width:860px;margin-top:16px"><div class="card-h"><h3 style="color:var(--red)">${ic('alert')} Zona berbahaya</h3></div><p class="muted" style="margin:0 0 14px">Menghapus mata pelajaran akan menghapus seluruh topik, materi, tugas, kuis, nilai, dan diskusi secara permanen.</p><button class="btn btn-danger" data-act="csDelete">${ic('trash', 'sm')} Hapus mapel ini</button></section>`;
   afterRender(box);
 }
 
@@ -1738,7 +1738,7 @@ function renderModule(d, sub, anim) {
   else if (m.type === 'quiz') body = isT ? quizTeacherHTML(d, sub) : quizStudentHTML(d);
   else if (m.type === 'forum') body = forumHTML(d);
   setView(`
-    <div class="crumbs"><a data-go="/courses">Kursus Saya</a>${ic('right')}<a data-go="/course/${d.course.id}">${esc(d.course.fullname)}</a>${d.section ? ic('right') + `<a data-act="crumbSec" data-id="${d.section.id}">${esc(d.section.title)}</a>` : ''}</div>
+    <div class="crumbs"><a data-go="/courses">Mapel Saya</a>${ic('right')}<a data-go="/course/${d.course.id}">${esc(d.course.fullname)}</a>${d.section ? ic('right') + `<a data-act="crumbSec" data-id="${d.section.id}">${esc(d.section.title)}</a>` : ''}</div>
     <div class="mhead"><span class="aicon lg" data-p="${T.p}">${ic(T.icon)}</span><div class="grow" style="min-width:0"><div class="mt">${T.name}</div><h1>${esc(m.title)}</h1>${dates.length ? `<div class="dates">${dates.join('')}</div>` : ''}${status.length ? `<div class="gap8" style="margin-top:10px">${status.join('')}</div>` : ''}</div>
       ${isT ? `<div class="row" style="gap:6px"><button class="btn btn-glass btn-sm" data-act="modEditHere">${ic('sliders', 'sm')} <span class="hide-sm">Pengaturan</span></button><button class="btn btn-glass btn-icon btn-sm" data-act="modMoreHere" aria-label="Opsi lain">${ic('more')}</button></div>` : ''}</div>
     ${m.intro && m.type !== 'label' && plain(m.intro) ? `<div class="card glass rich" style="margin-bottom:16px">${sanitize(m.intro)}</div>` : ''}
@@ -2323,7 +2323,7 @@ async function pageReview(id) {
   const color = pct >= 75 ? 'var(--green)' : pct >= 55 ? 'var(--orange)' : 'var(--red)';
   const msg = pct >= 90 ? 'Luar biasa! 🏆' : pct >= 75 ? 'Kerja bagus! 🎉' : pct >= 55 ? 'Cukup baik, terus berlatih 💪' : 'Jangan menyerah, pelajari lagi ya 📚';
   const conf = fresh && pct >= 75 ? `<div class="confetti">${Array.from({ length: 46 }, (_, i) => `<i style="left:${(i * 2.2 + Math.random() * 3).toFixed(1)}%;background:${['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#af52de', '#ff2d55'][i % 7]};--dx:${(Math.random() * 120 - 60) | 0}px;--rot:${(Math.random() * 720 - 360) | 0}deg;animation-delay:${(Math.random() * .5).toFixed(2)}s"></i>`).join('')}</div>` : '';
-  setView(`<div class="crumbs"><a data-go="/course/${q.course_id}">Kursus</a>${ic('right')}<a data-go="/mod/${q.id}">${esc(q.title)}</a>${ic('right')}<span>Tinjauan</span></div>
+  setView(`<div class="crumbs"><a data-go="/course/${q.course_id}">Mapel</a>${ic('right')}<a data-go="/mod/${q.id}">${esc(q.title)}</a>${ic('right')}<span>Tinjauan</span></div>
     <div class="split"><div class="stack stg">
       <section class="result-hero glass">${conf}${ringBox(pct, 150, `<div style="line-height:1"><div style="font-size:40px">${fNum(a.grade)}</div><div style="font-size:13px;color:var(--text-2);font-weight:600;margin-top:4px">dari ${fNum(q.max_grade)}</div></div>`, color)}
         <h2>${d.role === 'teacher' && d.user ? esc(d.user.name) : msg}</h2><p class="muted" style="margin:0">${fNum(a.score)} dari ${fNum(a.max_score)} poin · ${fNum(pct)}%${a.preview ? ' · Pratinjau guru' : ''}</p></section>
@@ -2418,7 +2418,7 @@ function evRow(e) {
 function renderCalendar(anim) {
   const c = S.cal, ev = S.calEvents, selT = fromDateInput(c.sel), dayEv = ev.filter(e => dayKey(e.time) === c.sel), now = Date.now();
   const up = ev.filter(e => e.time >= now && e.time - now < 30 * 864e5).slice(0, 12);
-  setView(`<div class="ph"><div><h1>Kalender</h1><p>Tenggat tugas dan jadwal kuis dari kursus Anda.</p></div></div>
+  setView(`<div class="ph"><div><h1>Kalender</h1><p>Tenggat tugas dan jadwal kuis dari mata pelajaran Anda.</p></div></div>
     <div class="split"><section class="card glass"><div class="cal-head"><h3>${BULAN[c.m]} ${c.y}</h3><div class="row" style="gap:6px"><button class="btn btn-sm btn-glass" data-act="calToday">Hari ini</button><button class="btn btn-glass btn-icon btn-sm" data-act="calNav" data-d="-1" aria-label="Bulan sebelumnya">${ic('left', 'sm')}</button><button class="btn btn-glass btn-icon btn-sm" data-act="calNav" data-d="1" aria-label="Bulan berikutnya">${ic('right', 'sm')}</button></div></div>
       ${calGrid(c.y, c.m, ev, c.sel, false)}
       <div class="gap8" style="margin-top:14px;font-size:12.5px"><span class="chip" style="--ec:var(--pink)"><i style="width:8px;height:8px;border-radius:50%;background:var(--pink)"></i> Tenggat tugas</span><span class="chip"><i style="width:8px;height:8px;border-radius:50%;background:var(--orange)"></i> Kuis ditutup</span><span class="chip"><i style="width:8px;height:8px;border-radius:50%;background:var(--green)"></i> Dibuka</span></div></section>
@@ -2429,13 +2429,13 @@ async function pageGrades() {
   setChrome({ title: 'Nilai' });
   const tc = S.courses.filter(c => c.role === 'teacher'), isStudent = S.courses.some(c => c.role === 'student');
   if (!isStudent) {
-    setView(`<div class="ph"><div><h1>Nilai</h1><p>Buka buku nilai untuk setiap kursus yang Anda ampu.</p></div></div>
-      <section class="card glass"><div class="list">${tc.map(c => `<div class="li" data-go="/course/${c.id}/grades"><span class="cover" style="width:44px;height:44px;border-radius:12px;overflow:hidden;position:relative;display:block;flex:none">${coverSVG(c.id, c.cover)}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(c.fullname)}</div><div class="ls">${esc(c.shortname)} · Buku nilai</div></div>${ic('right', 'sm chev')}</div>`).join('') || emptyHTML('chart', 'Belum ada kursus', '')}</div></section>`);
+    setView(`<div class="ph"><div><h1>Nilai</h1><p>Buka buku nilai untuk setiap mata pelajaran yang Anda ampu.</p></div></div>
+      <section class="card glass"><div class="list">${tc.map(c => `<div class="li" data-go="/course/${c.id}/grades"><span class="cover" style="width:44px;height:44px;border-radius:12px;overflow:hidden;position:relative;display:block;flex:none">${coverSVG(c.id, c.cover)}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(c.fullname)}</div><div class="ls">${esc(c.shortname)} · Buku nilai</div></div>${ic('right', 'sm chev')}</div>`).join('') || emptyHTML('chart', 'Belum ada mata pelajaran', '')}</div></section>`);
     return;
   }
   await swr('grades', 'myGrades', {}, (list, c, refresh) => {
     const all = list.filter(g => g.total.pct !== null), avg = all.length ? all.reduce((s, g) => s + g.total.pct, 0) / all.length : null;
-    setView(`<div class="ph"><div><h1>Nilai</h1><p>Ikhtisar nilai dari semua kursus Anda.</p></div>${avg !== null ? `<div class="row">${ringBox(avg, 64, Math.round(avg) + '', avg >= 75 ? 'var(--green)' : avg >= 55 ? 'var(--orange)' : 'var(--red)', 18)}<div><b>Rata-rata</b><div class="faint" style="font-size:13px">${all.length} kursus</div></div></div>` : ''}</div>
+    setView(`<div class="ph"><div><h1>Nilai</h1><p>Ikhtisar nilai dari semua mata pelajaran Anda.</p></div>${avg !== null ? `<div class="row">${ringBox(avg, 64, Math.round(avg) + '', avg >= 75 ? 'var(--green)' : avg >= 55 ? 'var(--orange)' : 'var(--red)', 18)}<div><b>Rata-rata</b><div class="faint" style="font-size:13px">${all.length} mapel</div></div></div>` : ''}</div>
       <div class="stack stg">${list.map(g => gradeReportHTML(g, true)).join('') || `<div class="card glass">${emptyHTML('chart', 'Belum ada nilai', '')}</div>`}</div>`, !refresh);
   }, () => skel());
 }
@@ -2508,10 +2508,10 @@ async function pageAdmin(tab) {
   if (S.user.role !== 'admin') { go('/dashboard', true); return; }
   tab = tab || 'overview';
   setChrome({ title: 'Administrasi Situs' });
-  const tabs = [['overview', 'Ringkasan'], ['users', 'Pengguna'], ['courses', 'Kursus'], ['categories', 'Kategori'], ['announcements', 'Pengumuman'], ['settings', 'Pengaturan']];
+  const tabs = [['overview', 'Ringkasan'], ['users', 'Pengguna'], ['courses', 'Mapel'], ['categories', 'Kategori'], ['announcements', 'Pengumuman'], ['settings', 'Pengaturan']];
   const same = S.lastAdmin;
   S.lastAdmin = true;
-  setView(`<div class="ph"><div><div class="eyebrow">${ic('shield', 'xs')} Admin</div><h1>Administrasi Situs</h1><p>Kelola pengguna, kursus, kategori, dan pengaturan LMS.</p></div></div>
+  setView(`<div class="ph"><div><div class="eyebrow">${ic('shield', 'xs')} Admin</div><h1>Administrasi Situs</h1><p>Kelola pengguna, mata pelajaran, kategori, dan pengaturan LMS.</p></div></div>
     <div class="seg-wrap ctabs"><div class="seg lg">${tabs.map(t => `<button class="${t[0] === tab ? 'on' : ''}" data-act="adminTab" data-v="${t[0]}">${t[1]}</button>`).join('')}</div></div><div id="atab"></div>`, !same);
   const box = $('#atab'), path = S.path;
   box.innerHTML = `<div class="card glass">${'<div class="sk sk-line"></div>'.repeat(6)}</div>`;
@@ -2527,12 +2527,12 @@ async function pageAdmin(tab) {
 }
 function adminOverview(d) {
   const c = d.counts;
-  $('#atab').innerHTML = `<div class="grid g4 stg">${tile('users', ['#64d2ff', '#007aff'], c.users, 'Total pengguna', '/admin/users')}${tile('grad', ['#5ee07f', '#1aa84a'], c.students, 'Siswa')}${tile('edit', ['#c58bff', '#8a3ff0'], c.teachers, 'Guru')}${tile('book', ['#ffb35c', '#ff7a1f'], c.courses, 'Kursus', '/admin/courses')}${tile('layers', ['#7d7aff', '#5856d6'], c.modules, 'Aktivitas & materi')}${tile('inbox', ['#ff7aa2', '#f2245c'], c.submissions, 'Kiriman tugas')}${tile('quiz', ['#ffb35c', '#ff6a1f'], c.attempts, 'Percobaan kuis')}${tile('lock', ['#a1a1aa', '#52525b'], c.suspended, 'Akun nonaktif')}</div>
+  $('#atab').innerHTML = `<div class="grid g4 stg">${tile('users', ['#64d2ff', '#007aff'], c.users, 'Total pengguna', '/admin/users')}${tile('grad', ['#5ee07f', '#1aa84a'], c.students, 'Siswa')}${tile('edit', ['#c58bff', '#8a3ff0'], c.teachers, 'Guru')}${tile('book', ['#ffb35c', '#ff7a1f'], c.courses, 'Mapel', '/admin/courses')}${tile('layers', ['#7d7aff', '#5856d6'], c.modules, 'Aktivitas & materi')}${tile('inbox', ['#ff7aa2', '#f2245c'], c.submissions, 'Kiriman tugas')}${tile('quiz', ['#ffb35c', '#ff6a1f'], c.attempts, 'Percobaan kuis')}${tile('lock', ['#a1a1aa', '#52525b'], c.suspended, 'Akun nonaktif')}</div>
     <div class="split" style="margin-top:18px"><section class="card glass"><div class="card-h"><h3>${ic('clock')} Login terakhir</h3></div><div class="list">${d.recent.map(u => `<div class="li">${av(u)}<div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(u.name)}</div><div class="ls">@${esc(u.username)} · ${ROLE[u.role]}</div></div><span class="faint" style="font-size:13px">${rel(u.last_login)}</span></div>`).join('') || emptyHTML('clock', 'Belum ada login', '')}</div></section>
     <section class="card glass"><div class="card-h"><h3>${ic('sparkle')} Pintasan</h3></div><div class="opt-stack">
       <button class="opt-row" data-act="userNew" style="border:0;cursor:pointer;text-align:left;font:inherit;color:inherit"><div class="ot"><b>Tambah pengguna</b><small>Buat akun guru atau siswa satu per satu.</small></div>${ic('userplus')}</button>
       <button class="opt-row" data-act="userImport" style="border:0;cursor:pointer;text-align:left;font:inherit;color:inherit"><div class="ot"><b>Impor siswa dari Excel</b><small>Unduh templat, isi, lalu unggah satu kelas sekaligus.</small></div>${ic('upload')}</button>
-      <button class="opt-row" data-act="newCourse" style="border:0;cursor:pointer;text-align:left;font:inherit;color:inherit"><div class="ot"><b>Buat kursus</b><small>Kursus baru dengan topik mingguan.</small></div>${ic('book')}</button>
+      <button class="opt-row" data-act="newCourse" style="border:0;cursor:pointer;text-align:left;font:inherit;color:inherit"><div class="ot"><b>Buat mapel</b><small>Mapel baru dengan topik mingguan.</small></div>${ic('book')}</button>
       <button class="opt-row" data-go="/admin/settings" style="border:0;cursor:pointer;text-align:left;font:inherit;color:inherit"><div class="ot"><b>Pengaturan situs</b><small>Nama situs, sekolah, pendaftaran mandiri.</small></div>${ic('sliders')}</button>
     </div><p class="faint" style="font-size:12.5px;margin:14px 4px 0">LMS Sekolah v${esc(d.version)} · Database Google Sheets</p></section></div>`;
   afterRender($('#atab'));
@@ -2640,7 +2640,7 @@ function openImportStudents(o) {
   o = o || { mode: 'admin' };
   const isCourse = o.mode === 'course';
   let rows = [], checked = [];
-  const courseOpts = [['', '— Tidak didaftarkan ke kursus —']].concat(S.courses.map(c => [c.id, c.fullname]));
+  const courseOpts = [['', '— Tidak didaftarkan ke mata pelajaran —']].concat(S.courses.map(c => [c.id, c.fullname]));
   const canCreate = S.user.role === 'admin' || S.settings.teacher_import !== false;
   const sh = sheet({
     title: isCourse ? 'Impor siswa dari Excel' : 'Impor pengguna dari Excel', ok: 'Impor', size: 'lg',
@@ -2650,8 +2650,8 @@ function openImportStudents(o) {
       ${dropzone('xls', { label: 'Pilih berkas Excel (.xlsx) atau CSV', hint: 'Lembar pertama yang dibaca · ekspor Dapodik juga didukung', accept: '.xlsx,.xls,.csv,.txt' })}
       <details class="imp-paste"><summary>…atau tempel langsung dari Excel / Google Sheets</summary><textarea class="input" id="pasteCsv" placeholder="Salin tabel beserta baris judulnya (nama, nisn, kelas, …) lalu tempel di sini" style="min-height:90px;margin-top:8px;font-family:ui-monospace,Menlo,monospace;font-size:13px"></textarea></details>
       <div class="row2">${fInput('defpw', 'Password bawaan', '', { ph: 'mis. siswa123', hint: 'Dipakai bila kolom password kosong. Jika ini juga kosong, NISN menjadi password.' })}${isCourse
-        ? `<div class="field"><label class="lbl">Kursus tujuan</label><div class="input" style="display:flex;align-items:center;gap:8px;font-size:15px">${ic('book', 'sm')}<span class="ellipsis">${esc(o.courseName || '')}</span></div><div class="hint">${canCreate ? 'Akun baru dibuat otomatis, lalu semua siswa didaftarkan ke kursus ini.' : 'Hanya siswa yang sudah punya akun yang dapat didaftarkan.'}</div></div>`
-        : fSelect('course_id', 'Daftarkan ke kursus (opsional)', courseOpts, '', 'Siswa yang diimpor langsung terdaftar di kursus ini.')}</div>
+        ? `<div class="field"><label class="lbl">Mapel tujuan</label><div class="input" style="display:flex;align-items:center;gap:8px;font-size:15px">${ic('book', 'sm')}<span class="ellipsis">${esc(o.courseName || '')}</span></div><div class="hint">${canCreate ? 'Akun baru dibuat otomatis, lalu semua siswa didaftarkan ke mata pelajaran ini.' : 'Hanya siswa yang sudah punya akun yang dapat didaftarkan.'}</div></div>`
+        : fSelect('course_id', 'Daftarkan ke mapel (opsional)', courseOpts, '', 'Siswa yang diimpor langsung terdaftar di mata pelajaran ini.')}</div>
       <div id="impPrev"></div></div>`,
     onOk: async () => {
       if (!rows.length) throw new Error('Pilih berkas Excel atau tempel data terlebih dahulu.');
@@ -2697,21 +2697,21 @@ function showImportResult(r, bad, withCourse) {
   const skipped = (r.skipped || []).concat(bad || []).sort((a, b) => a.row - b.row);
   sheet({
     title: 'Hasil impor', cancel: 'Selesai', size: 'lg',
-    body: `<div class="grid ${withCourse ? 'g3' : 'g2'} stg" style="margin-bottom:16px">${tile('userplus', ['#5ee07f', '#1aa84a'], r.created, 'Akun baru dibuat')}${withCourse ? tile('book', ['#64d2ff', '#007aff'], r.enrolled, 'Didaftarkan ke kursus') : ''}${tile('alert', ['#ffb35c', '#ff7a1f'], skipped.length, 'Baris dilewati')}</div>
-      ${r.already ? `<p class="muted" style="margin:0 4px 12px">${r.already} siswa sudah terdaftar di kursus ini sebelumnya.</p>` : ''}
+    body: `<div class="grid ${withCourse ? 'g3' : 'g2'} stg" style="margin-bottom:16px">${tile('userplus', ['#5ee07f', '#1aa84a'], r.created, 'Akun baru dibuat')}${withCourse ? tile('book', ['#64d2ff', '#007aff'], r.enrolled, 'Didaftarkan ke mapel') : ''}${tile('alert', ['#ffb35c', '#ff7a1f'], skipped.length, 'Baris dilewati')}</div>
+      ${r.already ? `<p class="muted" style="margin:0 4px 12px">${r.already} siswa sudah terdaftar di mata pelajaran ini sebelumnya.</p>` : ''}
       ${skipped.length ? `<div class="lbl">Baris yang dilewati</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Baris</th><th>Username</th><th>Alasan</th></tr></thead><tbody>${skipped.map(x => `<tr><td>${x.row}</td><td>${esc(x.username || '—')}</td><td>${esc(x.reason)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty" style="padding:16px"><div class="ei" style="color:var(--green)">${ic('checkc')}</div><h4>Semua baris berhasil diimpor</h4></div>`}`
   });
   toast((r.created ? r.created + ' akun dibuat' : 'Impor selesai') + (withCourse ? ' · ' + r.enrolled + ' didaftarkan' : ''));
 }
 function drawAdminCourses() {
   const list = S.adminCourses || [];
-  $('#atab').innerHTML = `<section class="card glass"><div class="card-h"><h3>${ic('book')} Semua kursus <span class="faint" style="font-weight:600">${list.length}</span></h3><button class="btn btn-primary btn-sm" data-act="newCourse">${ic('plus', 'sm')} Kursus baru</button></div>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Kursus</th><th>Kategori</th><th>Guru</th><th class="num">Siswa</th><th class="num">Aktivitas</th><th>Status</th><th></th></tr></thead><tbody>${list.map(c => `<tr class="click" data-go="/course/${c.id}"><td><div class="row" style="gap:10px"><span class="cover" style="width:40px;height:40px;border-radius:11px;overflow:hidden;position:relative;display:block;flex:none">${coverSVG(c.id, c.cover)}</span><div style="min-width:0"><b>${esc(c.fullname)}</b><div class="faint" style="font-size:12px">${esc(c.shortname)}</div></div></div></td><td>${esc(c.category || '—')}</td><td>${esc(c.teachers.join(', ') || '—')}</td><td class="num">${c.students}</td><td class="num">${c.modules}</td><td>${c.visible ? '<span class="chip green">Tampil</span>' : '<span class="chip">Tersembunyi</span>'}</td><td class="num"><button class="btn btn-plain btn-icon btn-sm" data-act="acDel" data-id="${c.id}" aria-label="Hapus" style="color:var(--red)">${ic('trash', 'sm')}</button></td></tr>`).join('')}</tbody></table></div>${!list.length ? emptyHTML('book', 'Belum ada kursus', '') : ''}</section>`;
+  $('#atab').innerHTML = `<section class="card glass"><div class="card-h"><h3>${ic('book')} Semua mapel <span class="faint" style="font-weight:600">${list.length}</span></h3><button class="btn btn-primary btn-sm" data-act="newCourse">${ic('plus', 'sm')} Mapel baru</button></div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Mapel</th><th>Kategori</th><th>Guru</th><th class="num">Siswa</th><th class="num">Aktivitas</th><th>Status</th><th></th></tr></thead><tbody>${list.map(c => `<tr class="click" data-go="/course/${c.id}"><td><div class="row" style="gap:10px"><span class="cover" style="width:40px;height:40px;border-radius:11px;overflow:hidden;position:relative;display:block;flex:none">${coverSVG(c.id, c.cover)}</span><div style="min-width:0"><b>${esc(c.fullname)}</b><div class="faint" style="font-size:12px">${esc(c.shortname)}</div></div></div></td><td>${esc(c.category || '—')}</td><td>${esc(c.teachers.join(', ') || '—')}</td><td class="num">${c.students}</td><td class="num">${c.modules}</td><td>${c.visible ? '<span class="chip green">Tampil</span>' : '<span class="chip">Tersembunyi</span>'}</td><td class="num"><button class="btn btn-plain btn-icon btn-sm" data-act="acDel" data-id="${c.id}" aria-label="Hapus" style="color:var(--red)">${ic('trash', 'sm')}</button></td></tr>`).join('')}</tbody></table></div>${!list.length ? emptyHTML('book', 'Belum ada mata pelajaran', '') : ''}</section>`;
 }
 function drawCategories() {
   const list = S.categories || [];
-  $('#atab').innerHTML = `<section class="card glass" style="max-width:760px"><div class="card-h"><h3>${ic('layers')} Kategori kursus</h3><button class="btn btn-primary btn-sm" data-act="catNew">${ic('plus', 'sm')} Kategori baru</button></div>
-    <div class="list">${list.map(k => `<div class="li"><span class="aicon sm" data-p="interface">${ic('folder')}</span><div class="grow" style="min-width:0"><div class="lt">${esc(k.name)}</div><div class="ls">${esc(k.description || '—')}</div></div><button class="btn btn-plain btn-icon btn-sm" data-act="catEdit" data-id="${k.id}" aria-label="Edit">${ic('edit', 'sm')}</button><button class="btn btn-plain btn-icon btn-sm" data-act="catDel" data-id="${k.id}" aria-label="Hapus" style="color:var(--red)">${ic('trash', 'sm')}</button></div>`).join('') || emptyHTML('layers', 'Belum ada kategori', 'Kategori membantu mengelompokkan kursus, mis. Kelas X, XI, XII.')}</div></section>`;
+  $('#atab').innerHTML = `<section class="card glass" style="max-width:760px"><div class="card-h"><h3>${ic('layers')} Kategori mapel</h3><button class="btn btn-primary btn-sm" data-act="catNew">${ic('plus', 'sm')} Kategori baru</button></div>
+    <div class="list">${list.map(k => `<div class="li"><span class="aicon sm" data-p="interface">${ic('folder')}</span><div class="grow" style="min-width:0"><div class="lt">${esc(k.name)}</div><div class="ls">${esc(k.description || '—')}</div></div><button class="btn btn-plain btn-icon btn-sm" data-act="catEdit" data-id="${k.id}" aria-label="Edit">${ic('edit', 'sm')}</button><button class="btn btn-plain btn-icon btn-sm" data-act="catDel" data-id="${k.id}" aria-label="Hapus" style="color:var(--red)">${ic('trash', 'sm')}</button></div>`).join('') || emptyHTML('layers', 'Belum ada kategori', 'Kategori membantu mengelompokkan mata pelajaran, mis. Kelas X, XI, XII.')}</div></section>`;
 }
 function openCategoryForm(k) {
   sheet({
@@ -2735,7 +2735,7 @@ function adminSettings() {
   $('#atab').innerHTML = `<section class="card glass" style="max-width:760px"><div class="card-h"><h3>${ic('sliders')} Pengaturan situs</h3></div><div class="form" id="stForm">
     ${fInput('site_name', 'Nama situs', s.site_name, { req: true })}${fInput('school_name', 'Nama sekolah', s.school_name)}${fInput('tagline', 'Slogan (tampil di halaman login)', s.tagline)}${fInput('academic_year', 'Tahun ajaran', s.academic_year, { ph: '2026/2027' })}
     ${fSwitch('allow_register', 'Izinkan pendaftaran mandiri', 'Siswa dapat membuat akun sendiri dari halaman login.', !!s.allow_register)}
-    ${fSwitch('teacher_import', 'Guru boleh membuat akun siswa saat impor Excel', 'Jika dimatikan, impor dari kursus hanya mendaftarkan siswa yang akunnya sudah ada.', s.teacher_import !== false)}
+    ${fSwitch('teacher_import', 'Guru boleh membuat akun siswa saat impor Excel', 'Jika dimatikan, impor dari mata pelajaran hanya mendaftarkan siswa yang akunnya sudah ada.', s.teacher_import !== false)}
     <div><button class="btn btn-primary" data-act="stSave">Simpan pengaturan</button></div></div></section>`;
 }
 
@@ -2747,7 +2747,7 @@ function openSpot() {
   if ($('.spot-wrap')) return;
   const wrap = document.createElement('div');
   wrap.className = 'spot-wrap';
-  wrap.innerHTML = `<div class="sheet-bd"></div><div class="spot glass thick" role="dialog" aria-label="Pencarian"><div class="spot-in">${ic('search', 'lg')}<input id="spotQ" placeholder="Cari kursus, materi, pengguna…" autocomplete="off" spellcheck="false"><button class="btn btn-plain btn-sm" data-sx>Batal</button></div><div class="spot-res" id="spotRes"></div></div>`;
+  wrap.innerHTML = `<div class="sheet-bd"></div><div class="spot glass thick" role="dialog" aria-label="Pencarian"><div class="spot-in">${ic('search', 'lg')}<input id="spotQ" placeholder="Cari mapel, materi, pengguna…" autocomplete="off" spellcheck="false"><button class="btn btn-plain btn-sm" data-sx>Batal</button></div><div class="spot-res" id="spotRes"></div></div>`;
   $('#layer').appendChild(wrap);
   document.documentElement.classList.add('locked');
   wrap._api = { close: closeSpot };
@@ -2761,7 +2761,7 @@ function openSpot() {
   };
   const mark = () => $$('.li', res).forEach((l, i) => l.classList.toggle('act', i === act));
   const pages = () => navItems().map(n => ({ t: n.label, s: 'Halaman', icon: `<span class="ni" style="--c1:${n.c[0]};--c2:${n.c[1]}">${ic(n.icon)}</span>`, go: n.path }));
-  const quick = () => draw([['Buka cepat', pages()], ['Kursus Saya', S.courses.slice(0, 5).map(c => ({ t: c.fullname, s: c.shortname, icon: `<span class="cover" style="width:30px;height:30px;border-radius:9px;overflow:hidden;position:relative;display:block;flex:none">${coverSVG(c.id, c.cover)}</span>`, go: '/course/' + c.id }))]]);
+  const quick = () => draw([['Buka cepat', pages()], ['Mapel Saya', S.courses.slice(0, 5).map(c => ({ t: c.fullname, s: c.shortname, icon: `<span class="cover" style="width:30px;height:30px;border-radius:9px;overflow:hidden;position:relative;display:block;flex:none">${coverSVG(c.id, c.cover)}</span>`, go: '/course/' + c.id }))]]);
   quick();
   const search = debounce(async () => {
     const q = inp.value.trim(), my = ++seq;
@@ -2770,7 +2770,7 @@ function openSpot() {
     try {
       const r = await api('search', { q }, { silent: true });
       if (my !== seq) return;
-      draw([['Halaman', pg], ['Kursus', r.courses.map(c => ({ t: c.fullname, s: c.shortname + (c.enrolled ? '' : ' · belum terdaftar'), icon: `<span class="cover" style="width:30px;height:30px;border-radius:9px;overflow:hidden;position:relative;display:block;flex:none">${coverSVG(c.id, c.cover)}</span>`, go: '/course/' + c.id }))], ['Aktivitas & materi', r.modules.map(m => ({ t: m.title, s: TYPES[m.type].name + ' · ' + m.course, icon: `<span class="aicon sm" data-p="${TYPES[m.type].p}">${ic(TYPES[m.type].icon)}</span>`, go: '/mod/' + m.id }))], ['Pengguna', r.users.map(u => ({ t: u.name, s: '@' + u.username + ' · ' + ROLE[u.role], icon: av(u, 'sm'), go: '/admin/users' }))]]);
+      draw([['Halaman', pg], ['Mapel', r.courses.map(c => ({ t: c.fullname, s: c.shortname + (c.enrolled ? '' : ' · belum terdaftar'), icon: `<span class="cover" style="width:30px;height:30px;border-radius:9px;overflow:hidden;position:relative;display:block;flex:none">${coverSVG(c.id, c.cover)}</span>`, go: '/course/' + c.id }))], ['Aktivitas & materi', r.modules.map(m => ({ t: m.title, s: TYPES[m.type].name + ' · ' + m.course, icon: `<span class="aicon sm" data-p="${TYPES[m.type].p}">${ic(TYPES[m.type].icon)}</span>`, go: '/mod/' + m.id }))], ['Pengguna', r.users.map(u => ({ t: u.name, s: '@' + u.username + ' · ' + ROLE[u.role], icon: av(u, 'sm'), go: '/admin/users' }))]]);
     } catch (e) { /* abaikan */ }
   }, 260);
   inp.addEventListener('input', search);
@@ -2885,7 +2885,7 @@ const A = {
     menu(b, [
       { label: p.role === 'teacher' ? 'Jadikan siswa' : 'Jadikan guru', icon: 'users', fn: async () => { await mutate('setEnrolRole', { course_id: cid, user_id: p.id, role: p.role === 'teacher' ? 'student' : 'teacher' }); toast('Peran diperbarui'); loadParticipants(S.course); } },
       '-',
-      { label: 'Keluarkan dari kursus', icon: 'logout', danger: true, fn: async () => { if (await ask({ title: 'Keluarkan peserta?', message: p.name + ' tidak akan bisa lagi mengakses kursus ini.', ok: 'Keluarkan', danger: true })) { await mutate('unenrol', { course_id: cid, user_id: p.id }); toast('Peserta dikeluarkan'); loadParticipants(S.course); } } }
+      { label: 'Keluarkan dari mapel', icon: 'logout', danger: true, fn: async () => { if (await ask({ title: 'Keluarkan peserta?', message: p.name + ' tidak akan bisa lagi mengakses mata pelajaran ini.', ok: 'Keluarkan', danger: true })) { await mutate('unenrol', { course_id: cid, user_id: p.id }); toast('Peserta dikeluarkan'); loadParticipants(S.course); } } }
     ], { header: p.name });
   },
   gbExport: () => exportGradebook(),
@@ -2897,17 +2897,17 @@ const A = {
   csSave: async b => {
     const p = collectCourse($('#csForm'), S.course.course.id);
     await withBusy(b, () => mutate('saveCourse', p));
-    toast('Pengaturan kursus disimpan');
+    toast('Pengaturan mapel disimpan');
     await refreshBoot();
     reloadCourse();
   },
   csDelete: async () => {
     const c = S.course.course;
-    const v = await ask({ title: 'Hapus kursus?', message: 'Ketik nama singkat "' + c.shortname + '" untuk konfirmasi. Tindakan ini tidak dapat dibatalkan.', input: { placeholder: c.shortname }, ok: 'Hapus permanen', danger: true });
+    const v = await ask({ title: 'Hapus mapel?', message: 'Ketik nama singkat "' + c.shortname + '" untuk konfirmasi. Tindakan ini tidak dapat dibatalkan.', input: { placeholder: c.shortname }, ok: 'Hapus permanen', danger: true });
     if (v === null) return;
     if (v !== c.shortname) { toast('Nama singkat tidak cocok.', 'error'); return; }
     await mutate('deleteCourse', { id: c.id });
-    toast('Kursus dihapus');
+    toast('Mapel dihapus');
     await refreshBoot();
     go('/courses', true);
   },
@@ -3030,7 +3030,7 @@ const A = {
     const ids = Array.from(S.adminSel), v = b.dataset.v;
     if (!ids.length) return;
     if (v === 'delete') {
-      if (!(await ask({ title: 'Hapus ' + ids.length + ' pengguna?', message: 'Akun beserta kiriman, nilai, dan pendaftaran kursus mereka akan dihapus permanen.', ok: 'Hapus', danger: true, icon: 'trash' }))) return;
+      if (!(await ask({ title: 'Hapus ' + ids.length + ' pengguna?', message: 'Akun beserta kiriman, nilai, dan pendaftaran mata pelajaran mereka akan dihapus permanen.', ok: 'Hapus', danger: true, icon: 'trash' }))) return;
       const r = await mutate('deleteUsers', { ids }); toast(r.deleted + ' pengguna dihapus');
     } else { const r = await mutate('bulkUsers', { ids, action: v }); toast(r.updated + ' akun diperbarui'); }
     S.adminSel.clear();
@@ -3056,9 +3056,9 @@ const A = {
   },
   acDel: async b => {
     const c = S.adminCourses.find(x => x.id === b.dataset.id);
-    if (!(await ask({ title: 'Hapus kursus?', message: '"' + c.fullname + '" beserta seluruh isinya akan dihapus permanen.', ok: 'Hapus', danger: true, icon: 'trash' }))) return;
+    if (!(await ask({ title: 'Hapus mapel?', message: '"' + c.fullname + '" beserta seluruh isinya akan dihapus permanen.', ok: 'Hapus', danger: true, icon: 'trash' }))) return;
     await mutate('deleteCourse', { id: c.id });
-    toast('Kursus dihapus');
+    toast('Mapel dihapus');
     await refreshBoot();
     S.adminCourses = await api('allCourses');
     drawAdminCourses();
@@ -3067,7 +3067,7 @@ const A = {
   catEdit: b => openCategoryForm(S.categories.find(k => k.id === b.dataset.id)),
   catDel: async b => {
     const k = S.categories.find(x => x.id === b.dataset.id);
-    if (!(await ask({ title: 'Hapus kategori?', message: 'Kursus dalam "' + k.name + '" akan menjadi tanpa kategori.', ok: 'Hapus', danger: true }))) return;
+    if (!(await ask({ title: 'Hapus kategori?', message: 'Mapel dalam "' + k.name + '" akan menjadi tanpa kategori.', ok: 'Hapus', danger: true }))) return;
     await mutate('deleteCategory', { id: k.id });
     S.categories = await api('categories');
     drawCategories();

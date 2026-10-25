@@ -25,9 +25,9 @@ Memperbarui backend: tempel `Code.gs` baru → **Kelola deployment → Edit → 
 
 ## Fitur
 
-- **Siswa:** dasbor & linimasa tenggat, kalender, katalog dan daftar mandiri dengan kunci, progres per kursus, tugas (teks + berkas), kuis dengan timer, forum, laporan nilai.
-- **Guru:** kursus dengan topik, mode edit, 7 jenis aktivitas (Tugas, Kuis, Forum, Halaman, Berkas, Tautan URL, Teks & Media), penilaian tugas, bank soal (PG, PG kompleks, benar/salah, isian), impor soal dari **Excel** atau format **Aiken**, buku nilai + ekspor CSV, impor siswa dari **Excel** langsung ke kursus.
-- **Admin:** kelola pengguna (impor Excel/CSV, reset password, nonaktifkan), kategori, semua kursus, pengumuman, pengaturan situs.
+- **Siswa:** dasbor & linimasa tenggat, kalender, katalog dan daftar mandiri dengan kunci, progres per mapel, tugas (teks + berkas), kuis dengan timer, forum, laporan nilai.
+- **Guru:** mata pelajaran dengan topik, mode edit, 7 jenis aktivitas (Tugas, Kuis, Forum, Halaman, Berkas, Tautan URL, Teks & Media), penilaian tugas, bank soal (PG, PG kompleks, benar/salah, isian), impor soal dari **Excel** atau format **Aiken**, buku nilai + ekspor CSV, impor siswa dari **Excel** langsung ke mata pelajaran.
+- **Admin:** kelola pengguna (impor Excel/CSV, reset password, nonaktifkan), kategori, semua mapel, pengumuman, pengaturan situs.
 - **Tampilan:** tema terang/gelap, 5 wallpaper, animasi pegas ala iOS, efek refraksi kaca (Chrome/Edge desktop), nyaman di HP.
 
 ## Struktur

@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- *  LMS SEKOLAH — Backend API (Google Apps Script)  ·  versi 2.0.0
+ *  LMS SEKOLAH — Backend API (Google Apps Script)  ·  versi 2.0.1
  * ============================================================================
  *  Arsitektur
  *    Frontend : GitHub Pages (repo LMS)  — tampilan Liquid Glass
@@ -27,7 +27,7 @@ const CONFIG = {
   UPLOAD_FOLDER: 'LMS Sekolah - Unggahan',
   SESSION_DAYS: 7,                  // lama sesi login (hari)
   MAX_UPLOAD_MB: 10,                // batas ukuran per berkas
-  VERSION: '2.0.0'
+  VERSION: '2.0.1'
 };
 
 /* ---------------------------------------------------------------------------
@@ -118,7 +118,7 @@ function cekInstalasi() {
     const users = DB.all('Users');
     const admins = users.filter(function (u) { return u.role === 'admin'; }).length;
     lines.push(admins ? '✅ Akun admin: ' + admins : '❌ Belum ada akun admin — jalankan fungsi setup');
-    lines.push('ℹ️ Pengguna: ' + users.length + ' · Kursus: ' + DB.all('Courses').length);
+    lines.push('ℹ️ Pengguna: ' + users.length + ' · Mapel: ' + DB.all('Courses').length);
   } catch (e) { lines.push('❌ Database: ' + e.message); }
   let url = '';
   try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; }
@@ -466,18 +466,18 @@ function userCourseRoles_(u) {
 }
 function courseAccess_(u, courseId) {
   const c = DB.get('Courses', courseId);
-  if (!c) fail_('Kursus tidak ditemukan.');
+  if (!c) fail_('Mapel tidak ditemukan.');
   if (u.role === 'admin') return { course: c, role: 'teacher' };
   const e = DB.find('Enrolments', function (x) { return x.course_id === c.id && x.user_id === u.id; });
   if (!e) return { course: c, role: null };
   const role = e.role === 'teacher' ? 'teacher' : 'student';
-  if (role === 'student' && !bool_(c.visible)) fail_('Kursus ini sedang disembunyikan oleh guru.');
+  if (role === 'student' && !bool_(c.visible)) fail_('Mapel ini sedang disembunyikan oleh guru.');
   return { course: c, role: role };
 }
 function requireCourse_(u, courseId, needTeacher) {
   const a = courseAccess_(u, courseId);
-  if (!a.role) fail_('Anda belum terdaftar di kursus ini.');
-  if (needTeacher && a.role !== 'teacher') fail_('Hanya guru kursus yang dapat melakukan ini.');
+  if (!a.role) fail_('Anda belum terdaftar di mata pelajaran ini.');
+  if (needTeacher && a.role !== 'teacher') fail_('Hanya guru mata pelajaran yang dapat melakukan ini.');
   return a;
 }
 function sectionVis_() { const o = {}; DB.all('Sections').forEach(function (s) { o[s.id] = bool_(s.visible); }); return o; }
@@ -555,7 +555,7 @@ function actChangePassword_(ctx, p) {
 }
 
 /* ===========================================================================
- *  AKSI: DASBOR, KURSUS SAYA, KATALOG
+ *  AKSI: DASBOR, MAPEL SAYA, KATALOG
  * ========================================================================= */
 function courseStatsCtx_(u, roles) {
   const users = mapBy_(DB.all('Users'), 'id'), teachers = {}, studentCount = {};
@@ -722,7 +722,7 @@ function actCatalog_(ctx) {
 }
 
 /* ===========================================================================
- *  AKSI: HALAMAN KURSUS
+ *  AKSI: HALAMAN MAPEL
  * ========================================================================= */
 function quizGrade_(atts, method) {
   if (!atts || !atts.length) return null;
@@ -744,7 +744,7 @@ function actCourse_(ctx, p) {
   const isT = a.role === 'teacher';
   const out = { course: courseOut_(c, isT), category: cat ? cat.name : '', teachers: teachers, role: a.role };
   if (!a.role) {
-    if (!bool_(c.visible)) fail_('Kursus tidak tersedia.');
+    if (!bool_(c.visible)) fail_('Mapel tidak tersedia.');
     out.needEnrol = true;
     out.selfEnrol = !!c.enrol_key;
     return out;
@@ -806,9 +806,9 @@ function actCourse_(ctx, p) {
 
 function actEnrolSelf_(ctx, p) {
   const u = ctx.user, c = DB.get('Courses', p.id);
-  if (!c || !bool_(c.visible)) fail_('Kursus tidak tersedia.');
+  if (!c || !bool_(c.visible)) fail_('Mapel tidak tersedia.');
   if (DB.find('Enrolments', function (e) { return e.course_id === c.id && e.user_id === u.id; })) return true;
-  if (!c.enrol_key) fail_('Kursus ini tidak membuka pendaftaran mandiri. Hubungi guru pengampu.');
+  if (!c.enrol_key) fail_('Mapel ini tidak membuka pendaftaran mandiri. Hubungi guru pengampu.');
   if (str_(p.key).trim() !== str_(c.enrol_key).trim()) fail_('Kunci pendaftaran salah.');
   DB.insert('Enrolments', { id: uid_('e'), course_id: c.id, user_id: u.id, role: 'student', created_at: now_() });
   return true;
@@ -817,9 +817,9 @@ function actEnrolSelf_(ctx, p) {
 function actSaveCourse_(ctx, p) {
   const u = ctx.user;
   const fullname = str_(p.fullname).trim().slice(0, 150), shortname = str_(p.shortname).trim().slice(0, 40);
-  if (!fullname) fail_('Nama lengkap kursus wajib diisi.');
-  if (!shortname) fail_('Nama singkat kursus wajib diisi.');
-  if (DB.find('Courses', function (c) { return c.shortname.toLowerCase() === shortname.toLowerCase() && c.id !== p.id; })) fail_('Nama singkat "' + shortname + '" sudah dipakai kursus lain.');
+  if (!fullname) fail_('Nama lengkap mata pelajaran wajib diisi.');
+  if (!shortname) fail_('Nama singkat mata pelajaran wajib diisi.');
+  if (DB.find('Courses', function (c) { return c.shortname.toLowerCase() === shortname.toLowerCase() && c.id !== p.id; })) fail_('Nama singkat "' + shortname + '" sudah dipakai mata pelajaran lain.');
   const rec = {
     category_id: str_(p.category_id), fullname: fullname, shortname: shortname, summary: limit_(p.summary, 40000, 'Ringkasan'),
     enrol_key: str_(p.enrol_key).trim().slice(0, 60), cover: num_(p.cover), visible: p.visible === false ? '0' : '1',
@@ -830,7 +830,7 @@ function actSaveCourse_(ctx, p) {
     DB.update('Courses', p.id, rec);
     return { id: p.id };
   }
-  if (u.role === 'student') fail_('Hanya guru atau admin yang dapat membuat kursus.');
+  if (u.role === 'student') fail_('Hanya guru atau admin yang dapat membuat mata pelajaran.');
   const id = uid_('c');
   rec.id = id; rec.created_by = u.id; rec.created_at = now_();
   DB.insert('Courses', rec);
@@ -1939,11 +1939,11 @@ function importRows_(rows, opt) {
 }
 
 function actImportUsers_(ctx, p) {
-  if (p.course_id && !DB.get('Courses', p.course_id)) fail_('Kursus tujuan tidak ditemukan.');
+  if (p.course_id && !DB.get('Courses', p.course_id)) fail_('Mapel tujuan tidak ditemukan.');
   return importRows_(p.rows, { courseId: str_(p.course_id), defaultPassword: p.default_password, allowCreate: true, studentOnly: false });
 }
 
-/** Guru mengimpor daftar siswa dari Excel langsung ke kursusnya. */
+/** Guru mengimpor daftar siswa dari Excel langsung ke mata pelajarannya. */
 function actImportToCourse_(ctx, p) {
   requireCourse_(ctx.user, p.course_id, true);
   const allowCreate = ctx.user.role === 'admin' || getSettings_().teacher_import !== '0';
@@ -2119,9 +2119,9 @@ function isiDataContoh() {
 
   const catX = uid_('k'), catXI = uid_('k') + '1', catUmum = uid_('k') + '2';
   DB.insertMany('Categories', [
-    { id: catX, name: 'Kelas X', description: 'Kursus untuk Fase E', sort: 0 },
-    { id: catXI, name: 'Kelas XI', description: 'Kursus Konsentrasi Keahlian', sort: 1 },
-    { id: catUmum, name: 'Umum', description: 'Kursus lintas jenjang', sort: 2 }
+    { id: catX, name: 'Kelas X', description: 'Mapel untuk Fase E', sort: 0 },
+    { id: catXI, name: 'Kelas XI', description: 'Mapel Konsentrasi Keahlian', sort: 1 },
+    { id: catUmum, name: 'Umum', description: 'Mapel lintas jenjang', sort: 2 }
   ]);
 
   function course(full, short, cat, cover, summary, key, topics) {

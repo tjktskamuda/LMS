@@ -2,7 +2,7 @@
    Dipakai oleh demo.html (dan pengujian). Data demo tersimpan di localStorage browser ini saja. */
 (function () {
   'use strict';
-  var KEY = 'lms_demo_db_v2';
+  var KEY = 'lmsdemo_db_v2';
   var wb = null;
   try { wb = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { wb = null; }
   if (!wb || !wb.sheets) wb = { sheets: {}, order: [], props: {} };
@@ -11,7 +11,7 @@
     clearTimeout(saveT);
     saveT = setTimeout(function () { try { localStorage.setItem(KEY, JSON.stringify(wb)); } catch (e) { /* kuota penuh */ } }, 60);
   }
-  window.__LMS_DEMO_RESET = function () { try { localStorage.removeItem(KEY); Object.keys(localStorage).forEach(function (k) { if (k.indexOf('lms_') === 0) localStorage.removeItem(k); }); } catch (e) {} location.reload(); };
+  window.__LMS_DEMO_RESET = function () { try { localStorage.removeItem(KEY); Object.keys(localStorage).forEach(function (k) { if (k.indexOf('lmsdemo_') === 0) localStorage.removeItem(k); }); } catch (e) {} location.reload(); };
 
   function Range(sh, r, c, nr, nc) { this.sh = sh; this.r = r; this.c = c; this.nr = nr; this.nc = nc; }
   Range.prototype.getValues = function () {

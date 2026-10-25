@@ -6,13 +6,15 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.1';
 const markReady = () => { window.__LMS_READY = true; };
 
 /* ---------------------------------------------------------------- state */
 const CFG = window.LMS_CONFIG || {};
-const BOOT = (function () { try { return JSON.parse(localStorage.getItem('lms_settings') || '{}') || {}; } catch (e) { return {}; } })();
 const DEMO = !!window.__LMS_DEMO__;
+/* Demo & aplikasi asli berada di origin yang sama (github.io): pisahkan kunci penyimpanannya. */
+const LSP = DEMO ? 'lmsdemo_' : 'lms_';
+const BOOT = (function () { try { return JSON.parse(localStorage.getItem(LSP + 'settings') || '{}') || {}; } catch (e) { return {}; } })();
 const HOST_THEME = document.documentElement.getAttribute('data-theme');
 const S = {
   apiUrl: '', token: null, user: null, settings: Object.assign({ site_name: 'LMS Sekolah', school_name: '' }, BOOT),
@@ -24,9 +26,9 @@ const $ = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const LS = {
-  get(k, d) { try { const v = localStorage.getItem('lms_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem('lms_' + k, JSON.stringify(v)); } catch (e) { /* abaikan */ } },
-  del(k) { try { localStorage.removeItem('lms_' + k); } catch (e) { /* abaikan */ } }
+  get(k, d) { try { const v = localStorage.getItem(LSP + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(LSP + k, JSON.stringify(v)); } catch (e) { /* abaikan */ } },
+  del(k) { try { localStorage.removeItem(LSP + k); } catch (e) { /* abaikan */ } }
 };
 const debounce = (fn, ms) => { let t; return function () { const a = arguments; clearTimeout(t); t = setTimeout(() => fn.apply(null, a), ms); }; };
 const plain = h => { if (!h) return ''; try { return (new DOMParser().parseFromString(String(h), 'text/html').body.textContent || '').replace(/\s+/g, ' ').trim(); } catch (e) { return String(h).replace(/<[^>]*>/g, ' ').trim(); } };
@@ -3135,6 +3137,7 @@ async function start() {
   safeInit(bindGlobal, 'kontrol');
   S.apiUrl = resolveApi();
   if (!S.apiUrl) { showConnect(); return; }
+  if (LS.get('token_api', '') !== S.apiUrl) { LS.del('token'); LS.del('boot'); LS.set('token_api', S.apiUrl); } // sesi milik server lain
   S.token = LS.get('token', null);
   if (!S.token) { showLogin(); refreshSettings(); return; }
   const cached = LS.get('boot', null);

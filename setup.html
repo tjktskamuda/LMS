@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=2.0.0">
+  <link rel="stylesheet" href="assets/css/app.css?v=2.0.1">
   <script>
     (function () {
       var p = {}; try { p = JSON.parse(localStorage.getItem('lms_pref') || '{}') || {}; } catch (e) {}
@@ -174,7 +174,7 @@
         try { var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); var ok = document.execCommand('copy'); ta.remove(); return ok; } catch (e) { return false; }
       }
     }
-    var codeReady = fetch('backend/Code.gs?v=2.0.0', { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }).then(function (t) {
+    var codeReady = fetch('backend/Code.gs?v=2.0.1', { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }).then(function (t) {
       code = t.replace(/\s+$/, '');
       var lines = code.split('\n'), m = code.match(/VERSION:\s*'([\d.]+)'/);
       $('#codeMeta').textContent = lines.length.toLocaleString('id-ID') + ' baris · ' + Math.round(code.length / 1024) + ' KB · versi ' + (m ? m[1] : '?');

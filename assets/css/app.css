@@ -892,3 +892,12 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size
 @media print { #wall, .sidebar, .topbar, .tabbar { display: none !important; } #app { display: block; } .glass { box-shadow: none; background: #fff; } }
 .login-card .foot a { color: var(--tint); font-weight: 600; text-decoration: none; }
 .login-card .foot a:hover { text-decoration: underline; }
+
+/* Catatan bank soal acak (jumlah soal yang tampil) */
+.pick-note { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; margin-bottom: 14px; border-radius: 16px;
+  background: color-mix(in srgb, var(--purple-t) 10%, transparent); border: 1px solid color-mix(in srgb, var(--purple-t) 22%, transparent); font-size: 13.5px; line-height: 1.45; }
+.pick-note > svg { flex: none; width: 20px; height: 20px; margin-top: 1px; color: var(--purple-t); }
+.pick-note b { display: block; font-size: 14px; margin-bottom: 2px; }
+.pick-note div > div { color: var(--text-2); }
+.pick-note.warn { background: color-mix(in srgb, var(--orange-t) 10%, transparent); border-color: color-mix(in srgb, var(--orange-t) 25%, transparent); }
+.pick-note.warn > svg { color: var(--orange-t); }

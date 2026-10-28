@@ -27,7 +27,7 @@ const CONFIG = {
   UPLOAD_FOLDER: 'LMS Sekolah - Unggahan',
   SESSION_DAYS: 7,                  // lama sesi login (hari)
   MAX_UPLOAD_MB: 10,                // batas ukuran per berkas
-  VERSION: '2.0.1'
+  VERSION: '2.1.0'
 };
 
 /* ---------------------------------------------------------------------------
@@ -934,7 +934,8 @@ function buildConfig_(t, c) {
     case 'quiz': return {
       time_limit: Math.max(0, Math.min(600, num_(c.time_limit))), attempts: Math.max(0, Math.min(50, num_(c.attempts, 1))),
       grade_method: ['highest', 'average', 'first', 'last'].indexOf(c.grade_method) >= 0 ? c.grade_method : 'highest',
-      shuffle: !!c.shuffle, shuffle_options: !!c.shuffle_options, review: c.review !== false
+      shuffle: !!c.shuffle, shuffle_options: !!c.shuffle_options, review: c.review !== false,
+      pick: Math.max(0, Math.min(500, Math.floor(num_(c.pick))))   // 0 = semua soal; N = ambil N soal acak dari bank per percobaan
     };
     case 'forum': return { teacher_only: !!c.teacher_only };
   }
@@ -1185,9 +1186,30 @@ function quizState_(m, cfg, used, hasInprog, qCount) {
   return { can: true, reason: '' };
 }
 
+/** Jumlah soal yang tampil per percobaan (0 = semua soal di bank). */
+function quizPick_(cfg, total) {
+  const n = Math.floor(num_(cfg.pick));
+  return n > 0 && n < total ? n : 0;
+}
+
+/** Ambil n soal acak dari bank; bila urutan tidak diacak, soal tetap mengikuti urutan bank. */
+function pickQuestions_(qs, n, keepOrder) {
+  const ids = shuffle_(qs.map(function (q) { return q.id; })).slice(0, n);
+  if (!keepOrder) return ids;
+  const chosen = {};
+  ids.forEach(function (id) { chosen[id] = 1; });
+  return qs.filter(function (q) { return chosen[q.id]; }).map(function (q) { return q.id; });
+}
+
 function quizView_(u, m, cfg, isT, c) {
   const qs = DB.where('Questions', function (q) { return q.module_id === m.id; });
-  const base = { questionCount: qs.length, totalPoints: round2_(qs.reduce(function (s, q) { return s + num_(q.points, 1); }, 0)) };
+  const pick = quizPick_(cfg, qs.length), pts = qs.map(function (q) { return num_(q.points, 1); });
+  const samePts = pts.every(function (x) { return x === pts[0]; });
+  const base = {
+    questionCount: qs.length, totalPoints: round2_(pts.reduce(function (s, x) { return s + x; }, 0)),
+    pick: pick, shownCount: pick || qs.length,
+    shownPoints: pick ? (samePts && pts.length ? round2_(pts[0] * pick) : null) : round2_(pts.reduce(function (s, x) { return s + x; }, 0))
+  };
   const atts = DB.where('Attempts', function (t) { return t.module_id === m.id; });
   if (isT) {
     const users = mapBy_(DB.all('Users'), 'id');
@@ -1381,7 +1403,8 @@ function actStartAttempt_(ctx, p) {
     if (!st.can) fail_(st.reason);
   }
   if (!att) {
-    let order = qs.map(function (q) { return q.id; });
+    const pick = quizPick_(cfg, qs.length);
+    let order = pick ? pickQuestions_(qs, pick, !cfg.shuffle) : qs.map(function (q) { return q.id; });
     if (cfg.shuffle) order = shuffle_(order);
     const qById = mapBy_(qs, 'id');
     const layout = order.map(function (id) {

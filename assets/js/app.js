@@ -6,7 +6,7 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.0.4';
+const APP_VERSION = '2.1.0';
 const markReady = () => { window.__LMS_READY = true; };
 
 /* ---------------------------------------------------------------- state */
@@ -150,7 +150,8 @@ const ICONS = {
   globe: '<circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19M12 2.5a14.5 14.5 0 0 1 0 19 14.5 14.5 0 0 1 0-19z"/>',
   table: '<rect x="3" y="3.5" width="18" height="17" rx="2.5"/><path d="M3 9h18M3 14.5h18M9 3.5v17"/>',
   sparkle: '<path d="M12 3.5c.6 4.2 2.3 5.9 6.5 6.5-4.2.6-5.9 2.3-6.5 6.5-.6-4.2-2.3-5.9-6.5-6.5 4.2-.6 5.9-2.3 6.5-6.5zM19 15.5c.3 1.9 1 2.6 2.5 3-1.5.4-2.2 1.1-2.5 3-.3-1.9-1-2.6-2.5-3 1.5-.4 2.2-1.1 2.5-3z"/>',
-  palette: '<path d="M12 21.5a9.5 9.5 0 1 1 9.5-9.5c0 2.8-2.2 4-4.5 4H15a2 2 0 0 0-1.4 3.4c.9 1 .2 2.1-1.6 2.1z"/><circle cx="7.5" cy="11" r="1.2" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/>'
+  palette: '<path d="M12 21.5a9.5 9.5 0 1 1 9.5-9.5c0 2.8-2.2 4-4.5 4H15a2 2 0 0 0-1.4 3.4c.9 1 .2 2.1-1.6 2.1z"/><circle cx="7.5" cy="11" r="1.2" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/>',
+  shuffle: '<path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/><path d="m18 14 4 4-4 4"/>',
 };
 const ic = (n, c) => '<svg class="ic ' + (c || '') + '" aria-hidden="true"><use href="#i-' + n + '"/></svg>';
 function buildSprite() {
@@ -1518,7 +1519,7 @@ function openModuleForm(type, o) {
   }
   if (type === 'quiz') {
     body += dates('Dibuka', 'Ditutup') + `<div class="row3">${fInput('time_limit', 'Batas waktu (menit)', m ? cfg.time_limit || 0 : 30, { type: 'number', attrs: 'min="0" max="600"', hint: '0 = tanpa batas' })}${fInput('attempts', 'Kesempatan', m ? cfg.attempts || 0 : 1, { type: 'number', attrs: 'min="0" max="50"', hint: '0 = tak terbatas' })}${fInput('max_grade', 'Nilai maksimal', m ? m.max_grade : 100, { type: 'number', attrs: 'min="1" max="1000"' })}</div>
-      ${fSelect('grade_method', 'Metode penilaian', Object.keys(GM).map(k => [k, GM[k]]), cfg.grade_method || 'highest')}
+      <div class="row2">${fSelect('grade_method', 'Metode penilaian', Object.keys(GM).map(k => [k, GM[k]]), cfg.grade_method || 'highest')}${fInput('pick', 'Jumlah soal yang tampil', m ? cfg.pick || 0 : 0, { type: 'number', attrs: 'min="0" max="500"', hint: '0 = semua soal. Isi mis. 25 → tiap siswa mendapat 25 soal acak dari bank soal.' })}</div>
       <div class="opt-stack">${fSwitch('shuffle', 'Acak urutan soal', 'Setiap siswa mendapat urutan soal berbeda.', !!cfg.shuffle)}${fSwitch('shuffle_options', 'Acak urutan opsi jawaban', 'Untuk soal pilihan ganda.', m ? !!cfg.shuffle_options : true)}${fSwitch('review', 'Tampilkan kunci jawaban', 'Siswa dapat melihat jawaban benar setelah selesai.', cfg.review !== false)}</div>`;
   }
   if (type === 'forum') body += fSwitch('teacher_only', 'Hanya guru yang dapat memulai diskusi', 'Cocok untuk forum pengumuman. Siswa tetap dapat membalas.', !!cfg.teacher_only);
@@ -1534,7 +1535,12 @@ function openModuleForm(type, o) {
       if (type === 'url') p.config.url = need(r, 'url', 'URL wajib diisi.');
       if (type === 'assign' || type === 'quiz') { p.open_date = fromInput(fv(r, 'open_date')); p.due_date = fromInput(fv(r, 'due_date')); p.max_grade = +fv(r, 'max_grade') || 100; }
       if (type === 'assign') p.config = { types: [fv(r, 't_text') ? 'text' : '', fv(r, 't_file') ? 'file' : ''].filter(Boolean), max_files: +fv(r, 'max_files') || 3, allow_late: fv(r, 'allow_late') };
-      if (type === 'quiz') p.config = { time_limit: +fv(r, 'time_limit') || 0, attempts: +fv(r, 'attempts') || 0, grade_method: fv(r, 'grade_method'), shuffle: fv(r, 'shuffle'), shuffle_options: fv(r, 'shuffle_options'), review: fv(r, 'review') };
+      if (type === 'quiz') {
+        const pick = Math.floor(+fv(r, 'pick') || 0);
+        if (pick < 0 || pick > 500) throw new Error('Jumlah soal yang tampil harus 0–500.');
+        p.config = { time_limit: +fv(r, 'time_limit') || 0, attempts: +fv(r, 'attempts') || 0, grade_method: fv(r, 'grade_method'), shuffle: fv(r, 'shuffle'), shuffle_options: fv(r, 'shuffle_options'), review: fv(r, 'review'), pick };
+        if (pick && verLess(S.settings && S.settings.version, '2.1.0')) setTimeout(() => toast('Fitur "jumlah soal yang tampil" butuh Code.gs v2.1.0. Perbarui Code.gs di Apps Script lalu buat versi deployment baru.', 'error'), 600);
+      }
       if (type === 'forum') p.config = { teacher_only: fv(r, 'teacher_only') };
       if (type === 'file') {
         const files = dropFiles(r, 'upload');
@@ -1911,7 +1917,19 @@ function quizInfoGroup(d) {
     <div class="gi"><span class="k">Batas waktu pengerjaan</span><span class="v">${c.time_limit ? c.time_limit + ' menit' : 'Tanpa batas'}</span></div>
     <div class="gi"><span class="k">Kesempatan mengerjakan</span><span class="v">${c.attempts ? c.attempts + ' kali' : 'Tak terbatas'}</span></div>
     <div class="gi"><span class="k">Metode penilaian</span><span class="v">${GM[c.grade_method] || GM.highest}</span></div>
-    <div class="gi"><span class="k">Jumlah soal</span><span class="v">${d.questionCount} soal · ${fNum(d.totalPoints)} poin</span></div></div>`;
+    <div class="gi"><span class="k">Jumlah soal</span><span class="v">${quizCountText(d)}</span></div></div>`;
+}
+function quizCountText(d) {
+  const shown = d.shownCount || d.questionCount, pts = d.pick ? d.shownPoints : d.totalPoints;
+  const ptsTxt = pts === null || pts === undefined ? '' : ` · ${fNum(pts)} poin`;
+  if (!d.pick) return `${d.questionCount} soal${ptsTxt}`;
+  return d.summary ? `${shown} dari ${d.questionCount} soal (acak per siswa)${ptsTxt}` : `${shown} soal, diambil acak dari bank soal${ptsTxt}`;
+}
+function verLess(a, b) {
+  if (!a) return false;
+  const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); }
+  return false;
 }
 function quizStudentHTML(d) {
   const m = d.module, fin = d.attempts.filter(a => a.status === 'finished');
@@ -1923,7 +1941,7 @@ function quizStudentHTML(d) {
 }
 function quizTeacherHTML(d, sub) {
   const s = d.summary, tab = sub === 'results' ? 'results' : 'questions';
-  return `<div class="grid g4 stg" style="margin-bottom:16px">${tile('quiz', ['#ffb35c', '#ff6a1f'], d.questionCount, 'Soal')}${tile('award', ['#c58bff', '#8a3ff0'], d.totalPoints, 'Total poin')}${tile('users', ['#64d2ff', '#007aff'], s.attempted, 'Siswa mengerjakan')}${tile('chart', ['#5ee07f', '#1aa84a'], s.average || 0, 'Rata-rata nilai')}</div>
+  return `<div class="grid g4 stg" style="margin-bottom:16px">${tile('quiz', ['#ffb35c', '#ff6a1f'], d.questionCount, d.pick ? 'Soal di bank' : 'Soal')}${d.pick ? tile('shuffle', ['#c58bff', '#8a3ff0'], d.shownCount, 'Tampil per siswa') : tile('award', ['#c58bff', '#8a3ff0'], d.totalPoints, 'Total poin')}${tile('users', ['#64d2ff', '#007aff'], s.attempted, 'Siswa mengerjakan')}${tile('chart', ['#5ee07f', '#1aa84a'], s.average || 0, 'Rata-rata nilai')}</div>
     <section class="card glass"><div class="card-h"><div class="seg"><button class="${tab === 'questions' ? 'on' : ''}" data-act="quizTab" data-v="questions">Soal</button><button class="${tab === 'results' ? 'on' : ''}" data-act="quizTab" data-v="results">Hasil (${s.attempts})</button><button data-act="quizTab" data-v="info">Info</button></div>
       <div class="row" style="flex-wrap:wrap;gap:6px" id="qActions">${tab === 'questions' ? `<button class="btn btn-glass btn-sm" data-go="/attempt/${d.module.id}">${ic('play', 'sm')} Pratinjau</button><button class="btn btn-tinted btn-sm" data-act="qImport">${ic('upload', 'sm')} Impor</button><button class="btn btn-primary btn-sm" data-act="qAdd">${ic('plus', 'sm')} Tambah soal</button>` : `<button class="btn btn-tinted btn-sm" data-act="resExport">${ic('download', 'sm')} Ekspor</button>`}</div></div>
       <div id="quizTab"></div></section>`;
@@ -1945,8 +1963,14 @@ async function loadQuizTab(tab) {
 function drawQuestions() {
   const box = $('#quizTab'), qs = S.questions || [];
   if (!box) return;
-  box.innerHTML = qs.length ? `<div class="stack stg">${qs.map((q, i) => qCardHTML(q, i, qs.length)).join('')}</div>` : emptyHTML('quiz', 'Belum ada soal', 'Tambahkan soal satu per satu, atau impor sekaligus dari templat Excel / format Aiken.');
+  box.innerHTML = qs.length ? `${pickNoteHTML(qs.length)}<div class="stack stg">${qs.map((q, i) => qCardHTML(q, i, qs.length)).join('')}</div>` : emptyHTML('quiz', 'Belum ada soal', 'Tambahkan soal satu per satu, atau impor sekaligus dari templat Excel / format Aiken.');
   afterRender(box);
+}
+function pickNoteHTML(n) {
+  const pick = +((S.mod.module.config || {}).pick) || 0;
+  if (!pick) return '';
+  const ok = pick < n;
+  return `<div class="pick-note ${ok ? '' : 'warn'}">${ic(ok ? 'shuffle' : 'info')}<div><b>${ok ? `Tiap siswa mendapat ${pick} soal acak dari ${n} soal ini` : `Jumlah soal yang tampil (${pick}) ≥ jumlah soal di bank (${n})`}</b><div>${ok ? 'Setiap percobaan mengambil paket soal baru secara acak, jadi soal antarsiswa berbeda. Nilai dihitung dari soal yang didapat.' : 'Semua soal akan tampil. Tambah soal ke bank atau kecilkan angka di Edit pengaturan kuis.'}</div></div></div>`;
 }
 function qCardHTML(q, i, n) {
   let ans = '';

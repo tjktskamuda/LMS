@@ -8,10 +8,7 @@
   <meta name="theme-color" content="#e9eefb" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0b0d14" media="(prefers-color-scheme: dark)">
   <link rel="icon" href="assets/img/icon.svg" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=2.1.0">
+  <link rel="stylesheet" href="assets/css/app.css?v=2.2.0">
 </head>
 <body>
   <div id="wall" aria-hidden="true"><div class="b b1"></div><div class="b b2"></div><div class="b b3"></div><div class="b b4"></div></div>
@@ -35,6 +32,9 @@
     function h(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
     function check(force) {
       if (shown || (window.__LMS_READY && !force)) return;
+      /* app.js sudah termuat = aplikasi sedang berjalan. Jaringan lambat bukan
+         kegagalan, jadi jangan ganti layar aplikasi. */
+      if (!force && window.__LMS_LOADED) return;
       shown = true;
       var loaded = !!window.__LMS_LOADED, root = document.getElementById('root') || document.body;
       var st = document.createElement('style');
@@ -48,13 +48,15 @@
         '<p>Jika masalah berlanjut, coba browser lain (Chrome/Edge/Safari terbaru) atau hubungi admin sekolah.</p>' +
         (errs.length ? '<pre>' + h(errs.slice(0, 4).join('\n')) + '</pre>' : '') +
         '<p><button type="button" onclick="location.reload()">Muat ulang</button></p></div>';
+      /* Bila aplikasi ternyata siap setelah pesan tampil, pulihkan sendiri. */
+      var t = setInterval(function () { if (window.__LMS_READY) { clearInterval(t); location.reload(); } }, 1000);
     }
     window.__LMS_FATAL = function (e) { errs.push(msgOf(e)); shown = false; check(true); };
     function later() { setTimeout(function () { check(false); }, window.__LMS_GUARD_MS || 6000); }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', later); else later();
   })();
   </script>
-  <script src="assets/js/config.js?v=2.1.0"></script>
-  <script src="assets/js/app.js?v=2.1.0"></script>
+  <script src="assets/js/config.js?v=2.2.0"></script>
+  <script src="assets/js/app.js?v=2.2.0"></script>
 </body>
 </html>

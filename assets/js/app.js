@@ -6,7 +6,7 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.2.0';
 const markReady = () => { window.__LMS_READY = true; };
 
 /* ---------------------------------------------------------------- state */
@@ -411,6 +411,7 @@ function sheet(o) {
   $('#layer').appendChild(wrap);
   document.documentElement.classList.add('locked');
   const sh = $('.sheet', wrap);
+  const prevFocus = document.activeElement;
   const api_ = { el: wrap, sheet: sh, body: $('.sheet-bdy', wrap), closed: false };
   api_.close = function (v) {
     if (api_.closed) return;
@@ -418,6 +419,7 @@ function sheet(o) {
     wrap.classList.remove('in'); wrap.classList.add('out');
     S.overlays = S.overlays.filter(x => x !== api_);
     setTimeout(() => { wrap.remove(); unlockIfClear(); }, 380);
+    if (prevFocus && prevFocus.isConnected && prevFocus.focus) prevFocus.focus();
     if (o.onClose) o.onClose(v);
   };
   api_.busy = on => { $$('[data-ok], .sheet-ft .btn-primary', wrap).forEach(b => b.classList.toggle('busy', !!on)); };
@@ -432,8 +434,21 @@ function sheet(o) {
   const x = $('[data-x]', wrap); if (x) x.addEventListener('click', () => api_.close(false));
   const okb = $('[data-ok]', wrap); if (okb) okb.addEventListener('click', api_.ok);
   wrap.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) api_.ok(); });
+  /* Fokus masuk ke dialog lalu berputar di dalamnya (Tab/Shift+Tab), dan kembali ke
+     pemicu saat ditutup. Fokus ke wadah, bukan input, agar keyboard HP tidak terbuka sendiri. */
+  sh.tabIndex = -1;
+  sh.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const list = $$('button:not([disabled]),a[href],input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])', sh).filter(x => x.offsetParent !== null);
+    if (!list.length) return;
+    const first = list[0], last = list[list.length - 1];
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === sh)) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
   dragDismiss(sh, $('.sheet-hd', sh), () => api_.close(false));
   S.overlays.push(api_);
+  /* Fokus sinkron: rAF bisa ditahan browser di tab latar, membuat fokus tertinggal di belakang dialog. */
+  sh.focus();
   requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('in')));
   afterRender(wrap);
   if (o.onMount) o.onMount(api_);
@@ -461,9 +476,10 @@ function ask(o) {
     const wrap = document.createElement('div');
     wrap.className = 'alert-wrap';
     const tone = o.danger ? 'background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red)' : 'background:color-mix(in srgb,var(--tint) 14%,transparent);color:var(--tint)';
-    wrap.innerHTML = `<div class="sheet-bd"></div><div class="alert glass thick" role="alertdialog"><div class="at">${o.icon ? `<div class="aic" style="${tone}">${ic(o.icon, 'lg')}</div>` : ''}<h4>${esc(o.title)}</h4>${o.message ? `<p>${esc(o.message)}</p>` : ''}${o.input ? `<input class="input" ${o.input.type ? `type="${o.input.type}"` : ''} placeholder="${esc(o.input.placeholder || '')}" value="${esc(o.input.value || '')}">` : ''}</div><div class="ab">${o.cancel === false ? '' : `<button data-v="0">${esc(o.cancel || 'Batal')}</button>`}<button data-v="1" class="bold ${o.danger ? 'danger' : ''}">${esc(o.ok || 'OK')}</button></div></div>`;
+    wrap.innerHTML = `<div class="sheet-bd"></div><div class="alert glass thick" role="alertdialog" aria-modal="true"><div class="at">${o.icon ? `<div class="aic" style="${tone}">${ic(o.icon, 'lg')}</div>` : ''}<h4>${esc(o.title)}</h4>${o.message ? `<p>${esc(o.message)}</p>` : ''}${o.input ? `<input class="input" ${o.input.type ? `type="${o.input.type}"` : ''} placeholder="${esc(o.input.placeholder || '')}" value="${esc(o.input.value || '')}">` : ''}</div><div class="ab">${o.cancel === false ? '' : `<button data-v="0">${esc(o.cancel || 'Batal')}</button>`}<button data-v="1" class="bold ${o.danger ? 'danger' : ''}">${esc(o.ok || 'OK')}</button></div></div>`;
     $('#layer').appendChild(wrap);
     document.documentElement.classList.add('locked');
+    const prevFocus = document.activeElement;
     const inp = $('input', wrap);
     const api_ = {};
     const done = v => {
@@ -472,6 +488,7 @@ function ask(o) {
       wrap.classList.remove('in'); wrap.classList.add('out');
       S.overlays = S.overlays.filter(x => x !== api_);
       setTimeout(() => { wrap.remove(); unlockIfClear(); }, 300);
+      if (prevFocus && prevFocus.isConnected && prevFocus.focus) prevFocus.focus();
       res(v ? (inp ? inp.value.trim() : true) : (inp ? null : false));
     };
     api_.close = () => done(false);
@@ -542,6 +559,20 @@ function setView(html, anim) {
 function afterRender(root, anim) {
   anim = anim !== false;
   $$('.stg', root).forEach(g => Array.from(g.children).forEach((c, i) => c.style.setProperty('--i', Math.min(i, 14))));
+  /* Baris/kartu yang dapat diklik dibangun sebagai <div>; beri semantik + fokus keyboard. */
+  $$('[data-go],[data-act]', root).forEach(el => {
+    if (el.matches('button,a,input,select,textarea,summary') || el.hasAttribute('tabindex')) return;
+    el.tabIndex = 0;
+    if (!el.hasAttribute('role')) el.setAttribute('role', el.hasAttribute('data-go') ? 'link' : 'button');
+  });
+  /* Judul kartu selalu berada tepat di bawah h1 halaman; level 2 supaya urutan heading tidak melompat.
+     Judul di dalam kartu (mis. kartu mapel) satu tingkat di bawahnya. */
+  $$('.card-h > h3', root).forEach(h => { h.setAttribute('role', 'heading'); h.setAttribute('aria-level', '2'); });
+  $$('h4', root).forEach(h => {
+    const host = h.closest('section.card, .card');
+    h.setAttribute('role', 'heading');
+    h.setAttribute('aria-level', host && host.querySelector('.card-h > h3') ? '3' : '2');
+  });
   initSegs(root);
   initEditors(root);
   initDrops(root);
@@ -711,7 +742,7 @@ async function uploadImageInto(file, restore) {
     const f = await readFile(file);
     const r = await api('uploadImage', f);
     restore();
-    document.execCommand('insertHTML', false, `<img src="${esc(imgUrl(r))}" alt="${esc(r.name)}">`);
+    document.execCommand('insertHTML', false, `<img src="${esc(imgUrl(r))}" alt="${esc(r.name)}" loading="lazy" decoding="async">`);
   } catch (e) { /* sudah ditampilkan */ }
 }
 function edVal(root, name) {
@@ -754,7 +785,10 @@ function fileLinks(f) {
   if (/^data:/.test(f.url || '')) return { open: f.url, preview: f.url, download: f.url };
   return { open: 'https://drive.google.com/file/d/' + f.id + '/view', preview: 'https://drive.google.com/file/d/' + f.id + '/preview', download: 'https://drive.google.com/uc?export=download&id=' + f.id };
 }
-const imgUrl = f => /^data:/.test(f.url || '') ? f.url : 'https://drive.google.com/thumbnail?id=' + f.id + '&sz=w2000';
+/* Endpoint thumbnail Drive sudah tidak andal untuk hotlink; lh3 menyajikan berkas
+   yang dibagikan "siapa saja dengan tautan" dan menerima parameter ukuran. */
+const imgUrl = f => /^data:/.test(f.url || '') ? f.url : 'https://lh3.googleusercontent.com/d/' + f.id + '=w1600';
+const IMG_FALLBACK = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="100%" height="100%" fill="#e9ecf8"/><g fill="none" stroke="#8e8e93" stroke-width="8" stroke-linecap="round"><rect x="200" y="130" width="240" height="150" rx="18"/><path d="M240 240l60-60 45 45 35-30 40 45"/><circle cx="270" cy="175" r="16"/></g></svg>');
 function fileLinkRow(f) {
   const L = fileLinks(f);
   return fileRow(f, `<a class="btn btn-sm btn-tinted" href="${esc(L.open)}" target="_blank" rel="noopener">Buka</a><a class="btn btn-sm btn-icon" href="${esc(L.download)}" target="_blank" rel="noopener" ${/^data:/.test(f.url || '') ? `download="${esc(f.name)}"` : ''} aria-label="Unduh">${ic('download', 'sm')}</a>`);
@@ -1030,9 +1064,9 @@ function renderShell() {
         <div class="tb-title" id="tbTitle"></div>
         <div class="tb-actions">
           <div id="tbExtra" class="row"></div>
-          <button class="tb-search lg-el" data-lgb="4" data-act="spot" aria-label="Cari">${ic('search', 'sm')}<span>Cari mapel, materi…</span><kbd>${mac ? '⌘' : 'Ctrl'} K</kbd></button>
+          <button class="tb-search lg-el" data-lgb="4" data-act="spot" aria-label="Cari mapel, materi">${ic('search', 'sm')}<span aria-hidden="true">Cari mapel, materi…</span><kbd aria-hidden="true">${mac ? '⌘' : 'Ctrl'} K</kbd></button>
           <button class="btn btn-glass btn-icon lg-el" data-lgb="3" data-act="notifs" id="bellBtn" aria-label="Notifikasi" style="position:relative">${ic('bell')}</button>
-          <button class="btn btn-icon" data-act="meMenu" id="tbAvatar" aria-label="Akun" style="background:none">${av(u, 'sm')}</button>
+          <button class="btn btn-icon" data-act="meMenu" id="tbAvatar" aria-label="Akun ${esc(initials(u.name))} (${esc(u.name)})" style="background:none"><span aria-hidden="true">${av(u, 'sm')}</span></button>
         </div>
       </header>
       <div id="view"></div>
@@ -1058,7 +1092,7 @@ function renderMeChip() {
   const u = S.user, el = $('#meChip');
   if (!el || !u) return;
   el.innerHTML = `${av(u)}<div class="grow" style="min-width:0"><b class="ellipsis">${esc(u.name)}</b><small>${ROLE[u.role] || ''}${u.kelas ? ' · ' + esc(u.kelas) : ''}</small></div>${ic('more', 'sm')}`;
-  const ta = $('#tbAvatar'); if (ta) ta.innerHTML = av(u, 'sm');
+  const ta = $('#tbAvatar'); if (ta) ta.innerHTML = '<span aria-hidden="true">' + av(u, 'sm') + '</span>';
   const bn = $('#brandName'); if (bn) bn.textContent = S.settings.site_name;
   const bs = $('#brandSchool'); if (bs) bs.textContent = S.settings.school_name;
 }
@@ -1651,7 +1685,7 @@ async function loadGradebook(d) {
 function exportGradebook() {
   const g = S.gb;
   const rows = [['Nama', 'Username', 'NISN', 'Kelas'].concat(g.items.map(i => i.title + ' (maks ' + i.max_grade + ')')).concat(['Total (%)'])];
-  g.students.forEach(s => rows.push([s.name, s.username, s.nisn || '', s.kelas || ''].concat(g.items.map(i => { const v = g.grades[s.id][i.id]; return v === undefined || v === null ? '' : String(v).replace('.', ','); })).concat([g.totals[s.id].pct === null ? '' : String(g.totals[s.id].pct).replace('.', ',')])));
+  g.students.forEach(s => rows.push([s.name, s.username, s.nisn || '', s.kelas || ''].concat(g.items.map(i => { const v = (g.grades[s.id] || {})[i.id]; return v === undefined || v === null ? '' : String(v).replace('.', ','); })).concat([g.totals[s.id].pct === null ? '' : String(g.totals[s.id].pct).replace('.', ',')])));
   downloadFile('nilai-' + g.course.shortname + '.csv', toCSV(rows));
   if (!DEMO) toast('Berkas CSV diunduh');
 }
@@ -1770,7 +1804,7 @@ function fileBody(f) {
   if (!f) return `<div class="card glass">${emptyHTML('clip', 'Berkas tidak tersedia', '')}</div>`;
   const L = fileLinks(f), demo = /^data:/.test(f.url || ''), isImg = /^image\//.test(f.mime || ''), isPdf = /pdf/i.test(f.mime || '');
   let preview = '';
-  if (isImg) preview = `<img src="${esc(demo ? f.url : imgUrl(f))}" alt="${esc(f.name)}" style="width:100%;border-radius:18px;display:block">`;
+  if (isImg) preview = `<img src="${esc(demo ? f.url : imgUrl(f))}" alt="${esc(f.name)}" loading="lazy" decoding="async" style="width:100%;border-radius:18px;display:block">`;
   else if (!demo || isPdf) preview = `<iframe class="embed" style="aspect-ratio:4/5;max-height:80vh" src="${esc(L.preview)}" loading="lazy"></iframe>`;
   return `<section class="card glass">${fileLinkRow(f)}${preview ? `<div style="margin-top:14px">${preview}</div>` : ''}</section>`;
 }
@@ -2473,8 +2507,10 @@ function updateBell() {
   const seen = LS.get('nseen_' + S.user.id, 0), now = Date.now();
   const n = (S.notifs || []).filter(x => x.time > seen && x.time <= now).length;
   let dot = $('.bell-dot', b);
-  if (n) { if (!dot) { dot = document.createElement('span'); dot.className = 'bell-dot'; b.appendChild(dot); } dot.textContent = n > 9 ? '9+' : n; }
+  if (n) { if (!dot) { dot = document.createElement('span'); dot.className = 'bell-dot'; dot.setAttribute('aria-hidden', 'true'); b.appendChild(dot); } dot.textContent = n > 9 ? '9+' : n; }
   else if (dot) dot.remove();
+  /* Nama aksesibel harus memuat teks yang terlihat (jumlah notifikasi) agar cocok dengan label visual. */
+  b.setAttribute('aria-label', n ? 'Notifikasi, ' + (n > 9 ? '9+' : n) + ' baru' : 'Notifikasi');
 }
 const NK = { announce: ['megaphone', 'interface'], grade: ['award', 'content'], submission: ['inbox', 'assessment'], due: ['clock', 'quiz'], post: ['forum', 'communication'] };
 function openNotifs(anchor) {
@@ -2794,7 +2830,9 @@ function openSpot() {
     try {
       const r = await api('search', { q }, { silent: true });
       if (my !== seq) return;
-      draw([['Halaman', pg], ['Mapel', r.courses.map(c => ({ t: c.fullname, s: c.shortname + (c.enrolled ? '' : ' · belum terdaftar'), icon: `<span class="cover" style="width:30px;height:30px;border-radius:9px;overflow:hidden;position:relative;display:block;flex:none">${coverSVG(c.id, c.cover)}</span>`, go: '/course/' + c.id }))], ['Aktivitas & materi', r.modules.map(m => ({ t: m.title, s: TYPES[m.type].name + ' · ' + m.course, icon: `<span class="aicon sm" data-p="${TYPES[m.type].p}">${ic(TYPES[m.type].icon)}</span>`, go: '/mod/' + m.id }))], ['Pengguna', r.users.map(u => ({ t: u.name, s: '@' + u.username + ' · ' + ROLE[u.role], icon: av(u, 'sm'), go: '/admin/users' }))]]);
+      /* Hasil "Pengguna" hanya berguna bagi admin — rutenya buku pengguna admin. */
+      const users = S.user.role === 'admin' ? [['Pengguna', r.users.map(u => ({ t: u.name, s: '@' + u.username + ' · ' + ROLE[u.role], icon: av(u, 'sm'), go: '/admin/users' }))]] : [];
+      draw([['Halaman', pg], ['Mapel', r.courses.map(c => ({ t: c.fullname, s: c.shortname + (c.enrolled ? '' : ' · belum terdaftar'), icon: `<span class="cover" style="width:30px;height:30px;border-radius:9px;overflow:hidden;position:relative;display:block;flex:none">${coverSVG(c.id, c.cover)}</span>`, go: '/course/' + c.id }))], ['Aktivitas & materi', r.modules.map(m => ({ t: m.title, s: TYPES[m.type].name + ' · ' + m.course, icon: `<span class="aicon sm" data-p="${TYPES[m.type].p}">${ic(TYPES[m.type].icon)}</span>`, go: '/mod/' + m.id }))]].concat(users));
     } catch (e) { /* abaikan */ }
   }, 260);
   inp.addEventListener('input', search);
@@ -3109,6 +3147,15 @@ const A = {
 
 /* ---------------------------------------------------------------- global events */
 function bindGlobal() {
+  /* Gambar dari Drive bisa ditolak (izin/kuota). Tampilkan fallback sekali, jangan
+     biarkan ikon "gambar rusak" muncul di materi siswa. */
+  document.addEventListener('error', e => {
+    const img = e.target;
+    if (!img || img.tagName !== 'IMG' || img.dataset.fb) return;
+    img.dataset.fb = '1';
+    img.src = IMG_FALLBACK;
+    img.alt = (img.alt || 'Gambar') + ' (gagal dimuat)';
+  }, true);
   document.addEventListener('click', e => {
     const sb = e.target.closest('.seg > button');
     if (sb && !sb.disabled) segSelect(sb);
@@ -3125,6 +3172,10 @@ function bindGlobal() {
     else if (e.key === 'Escape') {
       if (S.menu) closeMenu();
       else if (S.overlays.length) S.overlays[S.overlays.length - 1].close();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      /* Div/baris bertanda data-go atau data-act harus bisa diaktifkan dari keyboard. */
+      const t = e.target instanceof Element ? e.target.closest('[data-go],[data-act]') : null;
+      if (t && !/^(BUTTON|A|INPUT|SELECT|TEXTAREA|SUMMARY)$/.test(t.tagName) && t.tabIndex >= 0) { e.preventDefault(); t.click(); }
     }
   });
   let hlRaf = 0, hlEl = null;

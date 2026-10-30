@@ -6,7 +6,7 @@
   <title>Pasang LMS Sekolah</title>
   <meta name="description" content="Panduan memasang backend Google Apps Script untuk LMS Sekolah.">
   <link rel="icon" href="assets/img/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="assets/css/app.css?v=2.3.1">
+  <link rel="stylesheet" href="assets/css/app.css?v=2.3.3">
   <script>
     (function () {
       var p = {}; try { p = JSON.parse(localStorage.getItem('lms_pref') || '{}') || {}; } catch (e) {}
@@ -171,7 +171,7 @@
         try { var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); var ok = document.execCommand('copy'); ta.remove(); return ok; } catch (e) { return false; }
       }
     }
-    var codeReady = fetch('backend/Code.gs?v=2.3.1', { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }).then(function (t) {
+    var codeReady = fetch('backend/Code.gs?v=2.3.3', { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }).then(function (t) {
       code = t.replace(/\s+$/, '');
       var lines = code.split('\n'), m = code.match(/VERSION:\s*'([\d.]+)'/);
       $('#codeMeta').textContent = lines.length.toLocaleString('id-ID') + ' baris · ' + Math.round(code.length / 1024) + ' KB · versi ' + (m ? m[1] : '?');

@@ -6,7 +6,7 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.3.1';
+const APP_VERSION = '2.3.3';
 const markReady = () => { window.__LMS_READY = true; };
 
 /* ---------------------------------------------------------------- state */
@@ -583,12 +583,16 @@ function afterRender(root, anim) {
   initSegs(root);
   initEditors(root);
   initDrops(root);
+  /* Di HP, angka yang menghitung naik dan bar yang mengisi memicu tata letak
+     puluhan kali per detik tepat saat halaman baru dibuka; nilai akhirnya
+     dipasang langsung. */
+  const choreo = anim && !isMobile();
   const run = () => {
     $$('.progress > i[data-w]', root).forEach(i => { i.style.width = Math.max(0, Math.min(100, +i.dataset.w)) + '%'; });
     $$('.ring .fg[data-off]', root).forEach(c => { c.style.strokeDashoffset = c.dataset.off; });
-    $$('[data-count]', root).forEach(el => countUp(el, anim));
+    $$('[data-count]', root).forEach(el => countUp(el, choreo));
   };
-  if (anim) requestAnimationFrame(() => requestAnimationFrame(run));
+  if (choreo) requestAnimationFrame(() => requestAnimationFrame(run));
   else {
     $$('.progress > i, .ring .fg', root).forEach(x => { x.style.transition = 'none'; });
     run();

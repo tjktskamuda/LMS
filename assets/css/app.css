@@ -910,6 +910,25 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size
 
 /* Hover highlight follower (desktop) */
 @media (hover: hover) { .hl { --mx: -300px; --my: -300px; } }
+
+/* Gerak di perangkat kelas bawah: hanya transform dan opacity yang dianimasikan.
+   Properti tata letak (grid-template-rows, background-position, filter) memaksa
+   layout atau paint ulang tiap frame, dan itulah yang membuat gerakan tersendat.
+   Ditaruh paling akhir supaya menang urutan sumber atas aturan dasar di atas. */
+@media (max-width: 899px), (pointer: coarse) {
+  /* Satu transisi pendek untuk seluruh halaman; stagger per anak membuat halaman
+     masih bergerak >1 detik setelah navigasi. */
+  .page-in { animation-duration: .24s; }
+  .stg > * { animation: none; }
+  .cho { animation-duration: .28s; animation-delay: calc(var(--i, 0) * 18ms); }
+  .sec-b { transition: none; }
+  .sk { background: var(--fill); animation: skPulse 1.2s ease-in-out infinite; }
+  .toast { -webkit-backdrop-filter: none; backdrop-filter: none; animation-name: islandFlat; }
+  .toast.out { animation-name: islandFlatOut; }
+  @keyframes skPulse { 50% { opacity: .55; } }
+  @keyframes islandFlat { from { transform: translateY(-16px) scale(.96); opacity: 0; } }
+  @keyframes islandFlatOut { to { transform: translateY(-12px) scale(.96); opacity: 0; } }
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

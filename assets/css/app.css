@@ -111,13 +111,16 @@ h1, h2, h3, h4 { letter-spacing: -.02em; }
 
 /* ---------- Wallpaper ---------- */
 #wall { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: var(--w-base); transition: background .6s; pointer-events: none; }
-#wall .b { position: absolute; border-radius: 50%; will-change: transform; transition: background .8s; }
+#wall .b { position: absolute; border-radius: 50%; transition: background .8s; }
 #wall .b1 { width: 70vmax; height: 70vmax; left: -22vmax; top: -26vmax; background: radial-gradient(circle at 50% 50%, var(--w1) 0%, transparent 62%); opacity: .75; }
 #wall .b2 { width: 62vmax; height: 62vmax; right: -20vmax; top: -12vmax; background: radial-gradient(circle at 50% 50%, var(--w2) 0%, transparent 62%); opacity: .65; }
 #wall .b3 { width: 66vmax; height: 66vmax; right: -14vmax; bottom: -30vmax; background: radial-gradient(circle at 50% 50%, var(--w3) 0%, transparent 62%); opacity: .6; }
 #wall .b4 { width: 58vmax; height: 58vmax; left: -10vmax; bottom: -26vmax; background: radial-gradient(circle at 50% 50%, var(--w4) 0%, transparent 62%); opacity: .6; }
 #wall::after { content: ""; position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,.35) 1px, transparent 1.2px); background-size: 26px 26px; opacity: .35; -webkit-mask: radial-gradient(ellipse at 50% 30%, #000 0%, transparent 75%); mask: radial-gradient(ellipse at 50% 30%, #000 0%, transparent 75%); }
 html[data-theme="dark"] #wall::after { opacity: .12; }
+/* will-change hanya saat benar-benar dianimasikan: tanpa itu empat lapisan
+   raksasa tetap dipromosikan ke GPU dan memakan memori video terus-menerus. */
+html.motion #wall .b { will-change: transform; }
 html.motion #wall .b1 { animation: drift1 38s ease-in-out infinite alternate; }
 html.motion #wall .b2 { animation: drift2 44s ease-in-out infinite alternate; }
 html.motion #wall .b3 { animation: drift3 50s ease-in-out infinite alternate; }
@@ -162,10 +165,16 @@ html.reduce .glass, html.reduce .btn-glass, html.reduce .tabbar, html.reduce .me
 html.reduce { --g-bg: rgba(250,250,252,.97); --g-bg-thin: rgba(250,250,252,.95); --g-bg-thick: rgba(250,250,252,.99); }
 html.reduce[data-theme="dark"] { --g-bg: rgba(32,32,38,.98); --g-bg-thin: rgba(32,32,38,.96); --g-bg-thick: rgba(28,28,32,.99); }
 
-/* Biaya GPU: blur(26px) pada belasan lapisan adalah paint termahal di halaman ini.
-   Di layar kecil/perangkat sentuh radius dipangkas — tampilan tetap kaca, beban jauh lebih ringan. */
+/* Biaya GPU: backdrop-filter pada belasan permukaan adalah paint termahal di halaman ini —
+   setiap frame scroll, GPU harus membaca ulang latar di belakang tiap kartu dan memblurnya.
+   Di layar kecil/perangkat sentuh blur dilepas dan kaca dibuat lebih pekat; rim, sheen,
+   bayangan, dan gradasi wallpaper tetap ada, jadi tampilannya masih kaca. */
 @media (max-width: 899px), (pointer: coarse) {
-  :root { --g-blur: blur(12px) saturate(140%); --g-blur-thick: blur(16px) saturate(150%); }
+  .glass, .glass.thick, .btn-glass, .tb-search, .tbl.gb .sticky {
+    -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+  }
+  :root:not(.reduce) { --g-bg: rgba(252, 252, 254, .72); --g-bg-thin: rgba(252, 252, 254, .66); --g-bg-thick: rgba(250, 250, 253, .92); }
+  html[data-theme="dark"]:not(.reduce) { --g-bg: rgba(30, 30, 38, .78); --g-bg-thin: rgba(32, 32, 40, .7); --g-bg-thick: rgba(26, 26, 32, .94); }
 }
 
 /* ---------- Icons ---------- */

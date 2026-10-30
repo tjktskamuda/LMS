@@ -6,7 +6,7 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.1';
 const markReady = () => { window.__LMS_READY = true; };
 
 /* ---------------------------------------------------------------- state */
@@ -311,7 +311,14 @@ async function swr(key, action, payload, render, skeleton) {
 }
 
 /* ---------------------------------------------------------------- preferences */
-function chromiumDesktop() { const ua = navigator.userAgent; return /(Chrome|Edg)\/\d+/.test(ua) && !/Mobile|Android|CriOS/i.test(ua); }
+/* Refraksi SVG sangat mahal di GPU seluler. UA saja tidak cukup: mode "situs desktop"
+   di tablet tetap melaporkan Chrome tanpa kata Mobile, jadi ukuran layar dan jenis
+   penunjuk ikut diperiksa. */
+function chromiumDesktop() {
+  const ua = navigator.userAgent;
+  return /(Chrome|Edg)\/\d+/.test(ua) && !/Mobile|Android|CriOS/i.test(ua)
+    && innerWidth >= 900 && matchMedia('(pointer: fine)').matches;
+}
 let PREF = Object.assign({ theme: 'auto', wall: 'aurora', reduce: false, motion: !matchMedia('(pointer: coarse)').matches, refract: chromiumDesktop() }, LS.get('pref', {}));
 function applyPrefs() {
   const h = document.documentElement;

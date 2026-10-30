@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#e9eefb" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0b0d14" media="(prefers-color-scheme: dark)">
   <link rel="icon" href="assets/img/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="assets/css/app.css?v=2.2.0">
+  <link rel="stylesheet" href="assets/css/app.css?v=2.3.1">
 </head>
 <body>
   <div id="wall" aria-hidden="true"><div class="b b1"></div><div class="b b2"></div><div class="b b3"></div><div class="b b4"></div></div>
@@ -58,15 +58,15 @@
   </script>
   <!-- DEMO: backend Apps Script disimulasikan di browser (data hanya di browser ini). -->
   <script>window.__LMS_GUARD_MS = 30000;</script>
-  <script src="assets/js/demo-backend.js?v=2.2.0"></script>
+  <script src="assets/js/demo-backend.js?v=2.3.1"></script>
   <script>
   (function () {
     function load(src) { var s = document.createElement('script'); s.src = src; document.body.appendChild(s); }
-    fetch('backend/Code.gs?v=2.2.0').then(function (r) { if (!r.ok) throw new Error('backend/Code.gs tidak ditemukan'); return r.text(); }).then(function (code) {
+    fetch('backend/Code.gs?v=2.3.1').then(function (r) { if (!r.ok) throw new Error('backend/Code.gs tidak ditemukan'); return r.text(); }).then(function (code) {
       var s = document.createElement('script');
       s.textContent = code + '\n;(function(){ensureSetup_();if(!DB.find("Users",function(u){return u.username==="guru";}))isiDataContoh();DB.reset();})();';
       document.body.appendChild(s);
-      load('assets/js/app.js?v=2.2.0');
+      load('assets/js/app.js?v=2.3.1');
     }).catch(function (e) { if (window.__LMS_FATAL) window.__LMS_FATAL(e); });
   })();
   </script>

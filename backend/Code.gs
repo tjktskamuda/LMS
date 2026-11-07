@@ -29,7 +29,7 @@ const CONFIG = {
   MAX_UPLOAD_MB: 10,                // batas ukuran per berkas
   QUIZ_HEARTBEAT_SEC: 30,           // kuis berwaktu: perangkat siswa melapor ke server tiap N detik
   QUIZ_OFFLINE_SEC: 75,             // tanpa laporan lebih dari N detik = dianggap terputus (waktu dijeda)
-  VERSION: '2.2.0'
+  VERSION: '2.3.0'
 };
 
 /* ---------------------------------------------------------------------------
@@ -628,6 +628,27 @@ function announcementsFor_(u, roles, courseId, limit) {
     .slice(0, limit || 50);
 }
 
+/** Kuis yang belum selesai milik siswa (mis. setelah PC mati listrik / internet putus) untuk tombol "Lanjutkan" di dasbor. */
+function openQuizzes_(u, roles, x, cById) {
+  const now = now_(), modById = mapBy_(x.mods, 'id'), out = [];
+  DB.where('Attempts', function (t) { return t.user_id === u.id && t.status === 'inprogress' && !bool_(t.preview); }).forEach(function (t) {
+    const m = modById[t.module_id], c = m && cById[m.course_id];
+    if (!m || !c || roles[m.course_id] !== 'student' || !visibleForStudent_(m, x.secVis)) return;
+    const cfg = json_(m.config, {}), o = {
+      id: m.id, title: m.title, course: c.fullname, pause: pauseMode_(cfg),
+      answered: Object.keys(json_(t.answers, {})).length, total: json_(t.layout, []).length
+    };
+    if (o.pause) o.remaining = Math.max(0, attemptRemaining_(cfg, attemptClock_(t, now).time_used));
+    else {
+      const dl = attemptDeadline_(t, m, cfg);
+      if (dl && now > dl + 90000) return;        // waktu sudah habis; akan dinilai otomatis saat dibuka
+      if (dl) o.remaining = Math.max(0, dl - now);
+    }
+    out.push(o);
+  });
+  return out;
+}
+
 function actDashboard_(ctx) {
   const u = ctx.user, roles = userCourseRoles_(u), x = courseStatsCtx_(u, roles), cats = mapBy_(DB.all('Categories'), 'id');
   const courses = DB.all('Courses')
@@ -702,7 +723,7 @@ function actDashboard_(ctx) {
     recent.sort(function (a, b) { return b.time - a.time; });
     recent.splice(6);
   }
-  return { courses: courses, timeline: timeline, announcements: announcementsFor_(u, roles, null, 5), stats: stats, recent: recent };
+  return { courses: courses, timeline: timeline, announcements: announcementsFor_(u, roles, null, 5), stats: stats, recent: recent, openQuizzes: openQuizzes_(u, roles, x, cById) };
 }
 
 function actCatalog_(ctx) {

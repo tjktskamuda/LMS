@@ -6,7 +6,7 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.0';
 const markReady = () => { window.__LMS_READY = true; };
 
 /* ---------------------------------------------------------------- state */
@@ -1170,6 +1170,7 @@ function renderDashboard(d, anim) {
   setView(`
     <div class="ph"><div><div class="eyebrow">${esc(fLong(Date.now()))}</div><h1>${greet}, ${esc(first)} 👋</h1><p>${u.role === 'student' ? 'Berikut ringkasan belajar Anda hari ini.' : 'Berikut ringkasan kelas yang Anda ampu.'}</p></div>
       <div class="ph-actions">${canCreate ? `<button class="btn btn-primary" data-act="newCourse">${ic('plus', 'sm')} Mapel baru</button>` : `<button class="btn btn-glass" data-go="/catalog">${ic('layers', 'sm')} Katalog mapel</button>`}</div></div>
+    ${openQuizHTML(d.openQuizzes)}
     <div class="grid g4 stg">${tiles.join('')}</div>
     <div class="split" style="margin-top:18px">
       <div class="stack stg">
@@ -1182,6 +1183,12 @@ function renderDashboard(d, anim) {
         <section class="card glass"><div class="card-h"><h3>${ic('sparkle')} Aktivitas terbaru</h3></div>${d.recent.length ? `<div class="list">${d.recent.map(recentRow).join('')}</div>` : emptyHTML('sparkle', 'Belum ada aktivitas', '')}</section>
       </div>
     </div>`, anim);
+}
+function openQuizHTML(list) {
+  if (!list || !list.length) return '';
+  return `<section class="resume-card glass" role="region" aria-label="Kuis belum selesai">
+    <div class="rc-head"><span class="rc-ic">${ic('pause')}</span><div><h3>Kuis belum selesai</h3><p>Soal, jawaban, dan sisa waktu Anda masih tersimpan — misalnya setelah PC mati listrik atau internet putus. Lanjutkan dari terakhir kali.</p></div></div>
+    <div class="rc-list">${list.map(q => `<div class="rc-item"><span class="aicon sm" data-p="${TYPES.quiz.p}">${ic(TYPES.quiz.icon)}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(q.title)}</div><div class="ls ellipsis">${esc(q.course)} · ${q.answered}/${q.total} dijawab${q.remaining != null ? ` · sisa waktu <b>${fmtLeft(q.remaining)}</b>` : ''}</div></div><button class="btn btn-primary btn-sm" data-go="/attempt/${q.id}">${ic('play', 'sm')} Lanjutkan</button></div>`).join('')}</div></section>`;
 }
 function timelineHTML(items) {
   const now = Date.now(), f = S.tl;
@@ -2272,12 +2279,13 @@ async function pageAttempt(moduleId) {
   if (local && local.i >= 0 && local.i < d.questions.length) i = local.i;
   const A = S.att = {
     d, i, ans, dirty, skew, flags: LS.get('flag_' + at.id, {}), finishing: false, summary: false, dir: 'in-r',
-    pm: !!at.pause, left: at.remaining || 0, syncAt: Date.now(), online: true, hbMs: at.heartbeat || 30000, away: 0, lastTick: Date.now()
+    pm: !!at.pause, left: at.remaining || 0, syncAt: Date.now(), online: true, hbMs: at.heartbeat || 30000, away: 0, lastTick: Date.now(),
+    lastOk: Date.now(), lastSave: 0, saveT: 0
   };
   setChrome({ title: d.quiz.title, back: '/mod/' + moduleId, focus: true });
   renderAttempt();
   if (at.deadline || A.pm) A.timer = setInterval(tick, 1000);
-  A.hbTimer = setInterval(hb, A.pm ? A.hbMs : 25000);
+  A.hbTimer = setInterval(() => hb(true), A.pm ? A.hbMs : 25000);
   if (dirty) hb();
   const bu = () => { if (A.dirty) saveAttempt(); };
   window.addEventListener('beforeunload', bu);
@@ -2290,11 +2298,18 @@ async function pageAttempt(moduleId) {
   };
 }
 function attCache(A) { if (A && !A.done) LS.set('att_' + A.d.attempt.id, { ans: A.ans, ts: Date.now() + A.skew, i: A.i }); }
-function markDirty() { const A = S.att; if (!A) return; A.dirty = true; attCache(A); }
+function markDirty() { const A = S.att; if (!A) return; A.dirty = true; attCache(A); scheduleSave(A); }
+/** Jawaban dikirim ke server ±2 detik setelah dipilih (paling sering tiap 5 detik), supaya
+ *  bila PC tiba-tiba mati listrik, hanya jawaban beberapa detik terakhir yang belum tersimpan. */
+function scheduleSave(A) {
+  if (!A || A.saveT || A.offline || A.done || A.finishing) return;
+  const wait = Math.max(1800, 5000 - (Date.now() - A.lastSave));
+  A.saveT = setTimeout(() => { A.saveT = 0; if (A.dirty) hb(); }, wait);
+}
 function attStop(leave) {
   const A = S.att;
   if (!A) return;
-  clearInterval(A.timer); clearInterval(A.hbTimer); clearInterval(A.retry); A.retry = 0;
+  clearInterval(A.timer); clearInterval(A.hbTimer); clearInterval(A.retry); clearTimeout(A.saveT); A.retry = 0; A.saveT = 0;
   if (leave && A.pm && !A.done && A.online) attLeave(A, false);
   A.done = true;
   if (S.att === A) S.att = null;
@@ -2316,10 +2331,11 @@ function fmtLeft(ms) {
   const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
   return (h ? h + ':' + pad(mm) : pad(mm)) + ':' + pad(ss);
 }
-async function hb() {
+async function hb(fromInterval) {
   const A = S.att;
   if (!A || A.done || A.finishing || A.hbBusy) return;
   if (!A.pm && !A.dirty && !A.offline) return;
+  if (fromInterval && !A.dirty && !A.offline && Date.now() - A.lastOk < A.hbMs - 5000) return;   // baru saja tersambung lewat simpan jawaban
   A.hbBusy = true;
   const sendAns = A.dirty, away = A.away, payload = { id: A.d.attempt.id };
   if (sendAns) payload.answers = A.ans;
@@ -2328,6 +2344,8 @@ async function hb() {
   try {
     const r = await call('saveAttempt', payload, 15000);
     if (A.done) return;
+    A.lastOk = Date.now();
+    if (sendAns) A.lastSave = A.lastOk;
     A.away = Math.max(0, A.away - away);
     if (r && r.finished) { attOver(A, 'Waktu kuis sudah habis. Jawaban terakhir yang tersimpan sudah dikirim.'); return; }
     if (A.pm && r && r.remaining != null) { A.left = r.remaining; A.syncAt = Date.now(); A.stale = false; A.shown = null; }
@@ -2336,7 +2354,10 @@ async function hb() {
     if (sendAns) A.dirty = true;
     if (e.auth) { handleAuthLost(e.message); return; }
     if (e.net) attOffline(A);
-  } finally { A.hbBusy = false; }
+  } finally {
+    A.hbBusy = false;
+    if (A.dirty && !A.offline && !A.done) scheduleSave(A);   // ada perubahan selama pengiriman
+  }
 }
 function attOffline(A) {
   if (!A || A.done) return;

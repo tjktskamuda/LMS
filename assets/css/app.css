@@ -931,3 +931,27 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size
 .att-off-bar span { flex: 1; }
 .live-att { margin-bottom: 18px; padding: 12px; border-radius: 20px; background: color-mix(in srgb, var(--orange) 7%, transparent); }
 .live-h { display: flex; align-items: center; gap: 6px; margin: 0 4px 10px; font-weight: 700; font-size: 14px; }
+
+/* Dasbor siswa: kuis belum selesai (setelah mati listrik / internet putus) */
+.resume-card { margin-bottom: 18px; padding: 18px; border-radius: var(--r-xl, 28px);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--orange) 45%, transparent) inset, var(--g-shadow, 0 10px 30px -12px rgba(0,0,0,.25)); }
+.rc-head { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 12px; }
+.rc-head h3 { margin: 2px 0 4px; font-size: 18px; }
+.rc-head p { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--text-2); }
+.rc-ic { flex: none; width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(160deg, #ffb340, #ff7a1f); box-shadow: 0 8px 18px -8px rgba(255, 122, 31, .7); animation: rcPulse 2.4s var(--ease) infinite; }
+@keyframes rcPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 149, 0, .45), 0 8px 18px -8px rgba(255, 122, 31, .7); } 50% { box-shadow: 0 0 0 8px rgba(255, 149, 0, 0), 0 8px 18px -8px rgba(255, 122, 31, .7); } }
+.reduce .rc-ic { animation: none; }
+.rc-list { display: grid; gap: 8px; }
+.rc-item { display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 12px; border-radius: 18px; background: var(--fill); }
+.rc-item .lt { font-weight: 700; font-size: 14.5px; }
+.rc-item .ls { font-size: 12.5px; color: var(--text-2); margin-top: 1px; }
+.rc-item .btn { flex: none; }
+.rc-list { grid-template-columns: minmax(0, 1fr); }
+.rc-item { min-width: 0; }
+.rc-item .ls { white-space: normal; overflow: visible; text-overflow: clip; }
+@media (max-width: 520px) {
+  .rc-item { flex-wrap: wrap; }
+  .rc-item .grow { flex: 1 1 calc(100% - 60px); }
+  .rc-item .btn { flex: 1 1 100%; justify-content: center; height: 40px; }
+}

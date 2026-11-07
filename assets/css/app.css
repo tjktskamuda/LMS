@@ -955,3 +955,12 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size
   .rc-item .grow { flex: 1 1 calc(100% - 60px); }
   .rc-item .btn { flex: 1 1 100%; justify-content: center; height: 40px; }
 }
+
+/* Dasbor guru: Code.gs di server perlu diperbarui */
+.server-old { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 18px; padding: 16px 18px; border-radius: var(--r-xl);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--red-t, #e5484d) 40%, transparent) inset, var(--g-shadow); }
+.server-old .so-ic { flex: none; width: 40px; height: 40px; border-radius: 13px; display: grid; place-items: center; color: #fff; background: linear-gradient(160deg, #ff6b6b, #e5484d); }
+.server-old b { display: block; font-size: 15px; margin: 2px 0 4px; }
+.server-old p { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--text-2); }
+.server-old .grow { flex: 1 1 260px; min-width: 0; }
+.server-old .btn { flex: none; align-self: center; }

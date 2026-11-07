@@ -6,7 +6,8 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.4.0';
+const MIN_API = '2.4.0';   // versi Code.gs yang dibutuhkan semua fitur tampilan ini
 const markReady = () => { window.__LMS_READY = true; };
 
 /* ---------------------------------------------------------------- state */
@@ -990,7 +991,23 @@ function onLoggedIn(r) {
   S.token = r.token; LS.set('token', r.token); LS.set('boot', r.boot);
   applyBoot(r.boot);
   renderShell();
+  if (autoResume(r.boot, true)) return;
   if (!location.hash || location.hash === '#' || location.hash === '#/') go('/dashboard', true); else route();
+}
+/** Setelah login / membuka LMS: bila ada kuis yang belum selesai (mis. PC mati listrik), langsung lanjutkan. */
+function autoResume(boot, anyPage) {
+  const list = (boot && boot.openQuizzes) || [];
+  if (!list.length || (S.att && !S.att.done)) return false;
+  const p = (location.hash || '').replace(/^#/, '');
+  if (!anyPage && p && p !== '/' && p !== '/dashboard') return false;
+  if (/^\/attempt\//.test(p)) return false;
+  resumeQuiz(list[0].id, list[0]);
+  return true;
+}
+function resumeQuiz(id, q) {
+  S.resumeOnly = id;
+  if (q) toast(`Melanjutkan kuis “${q.title}” — soal, jawaban${q.remaining != null ? ', dan sisa waktu ' + fmtLeft(q.remaining) : ''} masih tersimpan.`, 'info');
+  go('/attempt/' + id, true);
 }
 async function logout() {
   const ok = await ask({ title: 'Keluar dari akun?', message: 'Anda perlu masuk kembali untuk mengakses mata pelajaran.', ok: 'Keluar', danger: true, icon: 'logout' });
@@ -1170,7 +1187,7 @@ function renderDashboard(d, anim) {
   setView(`
     <div class="ph"><div><div class="eyebrow">${esc(fLong(Date.now()))}</div><h1>${greet}, ${esc(first)} 👋</h1><p>${u.role === 'student' ? 'Berikut ringkasan belajar Anda hari ini.' : 'Berikut ringkasan kelas yang Anda ampu.'}</p></div>
       <div class="ph-actions">${canCreate ? `<button class="btn btn-primary" data-act="newCourse">${ic('plus', 'sm')} Mapel baru</button>` : `<button class="btn btn-glass" data-go="/catalog">${ic('layers', 'sm')} Katalog mapel</button>`}</div></div>
-    ${openQuizHTML(d.openQuizzes)}
+    ${openQuizHTML(d.openQuizzes)}${u.role !== 'student' ? serverOldHTML() : ''}
     <div class="grid g4 stg">${tiles.join('')}</div>
     <div class="split" style="margin-top:18px">
       <div class="stack stg">
@@ -1184,11 +1201,16 @@ function renderDashboard(d, anim) {
       </div>
     </div>`, anim);
 }
+function serverOldHTML() {
+  const v = S.settings && S.settings.version;
+  if (DEMO || !v || !verLess(v, MIN_API)) return '';
+  return `<section class="server-old glass"><span class="so-ic">${ic('alert')}</span><div class="grow"><b>Code.gs di server masih v${esc(v)} — perlu diperbarui ke v${MIN_API}</b><p>Sebelum diperbarui, fitur terbaru belum aktif: kuis tidak bisa dilanjutkan setelah mati listrik/internet putus, dan jumlah soal acak per siswa belum berlaku. Salin Code.gs terbaru dari halaman Pasang, tempel di Apps Script, lalu Terapkan → Kelola deployment → Versi baru.</p></div><a class="btn btn-tinted btn-sm" href="setup.html" target="_blank" rel="noopener">${ic('link', 'sm')} Buka halaman Pasang</a></section>`;
+}
 function openQuizHTML(list) {
   if (!list || !list.length) return '';
   return `<section class="resume-card glass" role="region" aria-label="Kuis belum selesai">
     <div class="rc-head"><span class="rc-ic">${ic('pause')}</span><div><h3>Kuis belum selesai</h3><p>Soal, jawaban, dan sisa waktu Anda masih tersimpan — misalnya setelah PC mati listrik atau internet putus. Lanjutkan dari terakhir kali.</p></div></div>
-    <div class="rc-list">${list.map(q => `<div class="rc-item"><span class="aicon sm" data-p="${TYPES.quiz.p}">${ic(TYPES.quiz.icon)}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(q.title)}</div><div class="ls ellipsis">${esc(q.course)} · ${q.answered}/${q.total} dijawab${q.remaining != null ? ` · sisa waktu <b>${fmtLeft(q.remaining)}</b>` : ''}</div></div><button class="btn btn-primary btn-sm" data-go="/attempt/${q.id}">${ic('play', 'sm')} Lanjutkan</button></div>`).join('')}</div></section>`;
+    <div class="rc-list">${list.map(q => `<div class="rc-item"><span class="aicon sm" data-p="${TYPES.quiz.p}">${ic(TYPES.quiz.icon)}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(q.title)}</div><div class="ls ellipsis">${esc(q.course)} · ${q.answered}/${q.total} dijawab${q.remaining != null ? ` · sisa waktu <b>${fmtLeft(q.remaining)}</b>` : ''}</div></div><button class="btn btn-primary btn-sm" data-act="resumeQuiz" data-id="${q.id}">${ic('play', 'sm')} Lanjutkan</button></div>`).join('')}</div></section>`;
 }
 function timelineHTML(items) {
   const now = Date.now(), f = S.tl;
@@ -2269,9 +2291,12 @@ async function pageAttempt(moduleId) {
   setChrome({ title: 'Kuis', back: '/mod/' + moduleId, focus: true });
   skel();
   if (S.att && !S.att.done) attStop(S.att.d.quiz.id !== moduleId);   // percobaan lain yang masih berjalan di latar
+  const resumeOnly = S.resumeOnly === moduleId;
+  S.resumeOnly = null;
   let d;
-  try { d = await api('startAttempt', { id: moduleId }); } catch (e) { go('/mod/' + moduleId, true); return; }
+  try { d = await api('startAttempt', resumeOnly ? { id: moduleId, resume_only: true } : { id: moduleId }); } catch (e) { go(resumeOnly ? '/dashboard' : '/mod/' + moduleId, true); return; }
   if (S.path !== '/attempt/' + moduleId) return;
+  if (d.none) { toast('Kuis ini sudah selesai.', 'info'); S.cache.clear(); go('/mod/' + moduleId, true); return; }
   if (d.finished) { toast('Waktu habis — jawaban terakhir Anda dikirim otomatis.', 'info'); go('/review/' + d.attempt_id, true); return; }
   const at = d.attempt, skew = at.now - Date.now(), local = LS.get('att_' + at.id, null);
   let ans = Object.assign({}, at.answers || {}), dirty = false, i = 0;
@@ -2319,9 +2344,14 @@ function attStop(leave) {
 function attLeave(A, beacon) {
   const payload = { id: A.d.attempt.id };
   if (A.dirty) payload.answers = A.ans;
-  if (beacon && !DEMO && navigator.sendBeacon) {
-    try { navigator.sendBeacon(S.apiUrl, new Blob([JSON.stringify({ action: 'leaveAttempt', token: S.token, payload })], { type: 'text/plain;charset=utf-8' })); } catch (e) { /* abaikan */ }
-  } else call('leaveAttempt', payload, 8000).catch(() => {});
+  if (!beacon || DEMO) { call('leaveAttempt', payload, 8000).catch(() => {}); return; }
+  // halaman sedang ditutup/disembunyikan: kirim dengan keepalive agar tetap sampai walau halaman sudah hilang
+  const body = JSON.stringify({ action: 'leaveAttempt', token: S.token, payload });
+  try {
+    fetch(S.apiUrl, { method: 'POST', body, keepalive: true, mode: 'no-cors', credentials: 'omit', headers: { 'Content-Type': 'text/plain;charset=utf-8' } }).catch(() => {});
+  } catch (e) {
+    try { navigator.sendBeacon(S.apiUrl, new Blob([body], { type: 'text/plain;charset=utf-8' })); } catch (e2) { /* abaikan */ }
+  }
 }
 function attLeft(A) {
   if (A.pm) return A.online && !A.stale ? A.left - (Date.now() - A.syncAt) : A.shown != null ? A.shown : A.left;
@@ -2337,15 +2367,17 @@ async function hb(fromInterval) {
   if (!A.pm && !A.dirty && !A.offline) return;
   if (fromInterval && !A.dirty && !A.offline && Date.now() - A.lastOk < A.hbMs - 5000) return;   // baru saja tersambung lewat simpan jawaban
   A.hbBusy = true;
-  const sendAns = A.dirty, away = A.away, payload = { id: A.d.attempt.id };
+  const sendAns = A.dirty, away = A.away, netLost = A.netLost, payload = { id: A.d.attempt.id };
   if (sendAns) payload.answers = A.ans;
   if (away) payload.away = away;
+  if (netLost) payload.net_lost = 1;
   A.dirty = false;
   try {
     const r = await call('saveAttempt', payload, 15000);
     if (A.done) return;
     A.lastOk = Date.now();
     if (sendAns) A.lastSave = A.lastOk;
+    if (netLost) { A.netLost = false; A.retAt = 0; }
     A.away = Math.max(0, A.away - away);
     if (r && r.finished) { attOver(A, 'Waktu kuis sudah habis. Jawaban terakhir yang tersimpan sudah dikirim.'); return; }
     if (A.pm && r && r.remaining != null) { A.left = r.remaining; A.syncAt = Date.now(); A.stale = false; A.shown = null; }
@@ -2361,6 +2393,7 @@ async function hb(fromInterval) {
 }
 function attOffline(A) {
   if (!A || A.done) return;
+  if ((A.retAt && Date.now() - A.retAt < 20000) || A.sawOffline) A.netLost = true;   // kembali ke kuis saat internet putus
   if (A.pm && A.online) { A.left = attLeft(A); A.syncAt = Date.now(); A.online = false; }
   A.offline = true;
   attOfflineUI(A);
@@ -2412,6 +2445,7 @@ document.addEventListener('visibilitychange', () => {
     const ms = Date.now() - A.hiddenAt;
     A.hiddenAt = 0;
     if (A.hiddenOnline && !A.sawOffline && navigator.onLine !== false) A.away += ms;   // pindah aplikasi/tab saat online: waktu tetap dihitung
+    A.retAt = Date.now();
   }
   hb();
 });
@@ -3190,6 +3224,7 @@ const A = {
   qNext: () => { const A_ = S.att; A_.dir = 'in-r'; A_.i++; attCache(A_); saveAttempt(); renderAttempt(); scrollTo({ top: 0, behavior: 'smooth' }); },
   qPrev: () => { const A_ = S.att; A_.dir = 'in-l'; A_.i--; attCache(A_); renderAttempt(); scrollTo({ top: 0, behavior: 'smooth' }); },
   attSummary: () => { const A_ = S.att; A_.dir = 'in-r'; A_.summary = true; saveAttempt(); renderAttempt(); scrollTo({ top: 0, behavior: 'smooth' }); },
+  resumeQuiz: b => resumeQuiz(b.dataset.id),
   attRetry: () => { const A_ = S.att; if (!A_) return; const st = $('.att-off-st'); if (st) st.innerHTML = '<span class="spinner"></span> Menghubungkan…'; hb(); },
   attEnd: async b => {
     if (!(await ask({ title: 'Akhiri percobaan siswa?', message: 'Percobaan dinilai dengan jawaban terakhir yang sudah tersimpan di server. Siswa tidak bisa melanjutkannya lagi.', ok: 'Akhiri & nilai', danger: true }))) return;
@@ -3355,7 +3390,7 @@ async function start() {
   try {
     const b = await call('boot');
     applyBoot(b); LS.set('boot', b);
-    if (!cached || !cached.user) { renderShell(); route(); } else { renderNavCourses(); renderMeChip(); }
+    if (!cached || !cached.user) { renderShell(); if (!autoResume(b, false)) route(); } else { renderNavCourses(); renderMeChip(); autoResume(b, false); }
   } catch (e) {
     if (e.auth || !cached) { LS.del('token'); LS.del('boot'); S.user = null; showLogin(e.auth ? e.message : 'Tidak dapat terhubung: ' + e.message); }
   }

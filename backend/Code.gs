@@ -29,7 +29,7 @@ const CONFIG = {
   MAX_UPLOAD_MB: 10,                // batas ukuran per berkas
   QUIZ_HEARTBEAT_SEC: 30,           // kuis berwaktu: perangkat siswa melapor ke server tiap N detik
   QUIZ_OFFLINE_SEC: 75,             // tanpa laporan lebih dari N detik = dianggap terputus (waktu dijeda)
-  VERSION: '2.3.0'
+  VERSION: '2.4.0'
 };
 
 /* ---------------------------------------------------------------------------
@@ -535,7 +535,8 @@ function actLogout_(ctx) {
 function bootData_(u) {
   return {
     user: publicUser_(u), settings: publicSettings_(getSettings_()), courses: myCourses_(u),
-    categories: DB.all('Categories').map(catOut_).sort(bySort_)
+    categories: DB.all('Categories').map(catOut_).sort(bySort_),
+    openQuizzes: openQuizzes_(u)          // kuis yang belum selesai → langsung dilanjutkan setelah login
   };
 }
 function actBoot_(ctx) { return bootData_(ctx.user); }
@@ -630,13 +631,19 @@ function announcementsFor_(u, roles, courseId, limit) {
 
 /** Kuis yang belum selesai milik siswa (mis. setelah PC mati listrik / internet putus) untuk tombol "Lanjutkan" di dasbor. */
 function openQuizzes_(u, roles, x, cById) {
+  const open = DB.where('Attempts', function (t) { return t.user_id === u.id && t.status === 'inprogress' && !bool_(t.preview); });
+  if (!open.length) return [];
+  roles = roles || userCourseRoles_(u);
+  x = x || courseStatsCtx_(u, roles);
+  cById = cById || mapBy_(DB.all('Courses').filter(function (c) { return roles[c.id] && (roles[c.id] === 'teacher' || bool_(c.visible)); }), 'id');
   const now = now_(), modById = mapBy_(x.mods, 'id'), out = [];
-  DB.where('Attempts', function (t) { return t.user_id === u.id && t.status === 'inprogress' && !bool_(t.preview); }).forEach(function (t) {
+  open.forEach(function (t) {
     const m = modById[t.module_id], c = m && cById[m.course_id];
     if (!m || !c || roles[m.course_id] !== 'student' || !visibleForStudent_(m, x.secVis)) return;
     const cfg = json_(m.config, {}), o = {
       id: m.id, title: m.title, course: c.fullname, pause: pauseMode_(cfg),
-      answered: Object.keys(json_(t.answers, {})).length, total: json_(t.layout, []).length
+      answered: Object.keys(json_(t.answers, {})).length, total: json_(t.layout, []).length,
+      last_seen: num_(t.last_seen) || num_(t.started_at)
     };
     if (o.pause) o.remaining = Math.max(0, attemptRemaining_(cfg, attemptClock_(t, now).time_used));
     else {
@@ -646,7 +653,7 @@ function openQuizzes_(u, roles, x, cById) {
     }
     out.push(o);
   });
-  return out;
+  return out.sort(function (a, b) { return b.last_seen - a.last_seen; });   // yang terakhir dikerjakan lebih dulu
 }
 
 function actDashboard_(ctx) {
@@ -1421,15 +1428,16 @@ function attemptDeadline_(att, m, cfg) {
  * sisa waktu yang sama ketika kembali. Setiap jeda dicatat untuk guru. */
 function pauseMode_(cfg) { return num_(cfg.time_limit) > 0 && cfg.pause_offline !== false; }
 
-function attemptClock_(t, now, awayMs) {
+function attemptClock_(t, now, awayMs, netLost) {
   const hb = CONFIG.QUIZ_HEARTBEAT_SEC * 1000, gap = CONFIG.QUIZ_OFFLINE_SEC * 1000;
   const last = num_(t.last_seen) || num_(t.started_at), d = Math.max(0, now - last);
   let used = num_(t.time_used), pc = num_(t.pause_count), pm = num_(t.pause_ms);
   if (d <= gap) used += d;
-  else if (num_(t.left_at) && num_(t.left_at) >= last) used += d;   // keluar dengan sengaja saat masih online → waktu tetap berjalan
+  else if (!netLost && num_(t.left_at) && num_(t.left_at) >= last) used += d;   // keluar dengan sengaja saat masih online → waktu tetap berjalan
   else {
-    // terputus: hanya waktu yang pasti dipakai (1 interval laporan + waktu pindah aplikasi saat online) yang dihitung
-    const counted = Math.min(d, hb + Math.min(Math.max(0, num_(awayMs)), 12 * 3600000));
+    // terputus: hanya waktu yang pasti dipakai (1 interval laporan + waktu pindah aplikasi saat online) yang dihitung.
+    // netLost: siswa kembali ke kuis dalam keadaan internet putus → seluruh jeda dianggap gangguan jaringan.
+    const counted = Math.min(d, hb + (netLost ? 0 : Math.min(Math.max(0, num_(awayMs)), 12 * 3600000)));
     used += counted;
     if (d - counted > 1000) { pc += 1; pm += d - counted; }
   }
@@ -1459,6 +1467,7 @@ function actStartAttempt_(ctx, p) {
         return { finished: true, attempt_id: att.id };
       }
     }
+    if (!att && p.resume_only) return { none: true };   // hanya melanjutkan; jangan memulai percobaan baru
     const used = mine.filter(function (t) { return !bool_(t.preview) && t.status === 'finished'; }).length;
     const st = quizState_(m, cfg, used, !!att, qs.length);
     if (!st.can) fail_(st.reason);
@@ -1539,7 +1548,7 @@ function actSaveAttempt_(ctx, p) {
     if (patch.answers) DB.update('Attempts', t.id, patch);
     return { saved: now };
   }
-  const clk = attemptClock_(t, now, p.away), left = attemptRemaining_(cfg, clk.time_used);
+  const clk = attemptClock_(t, now, p.away, !!p.net_lost), left = attemptRemaining_(cfg, clk.time_used);
   if (left <= -QUIZ_GRACE_MS) {               // waktu sudah habis → nilai dengan jawaban tersimpan sebelumnya
     const qs = DB.where('Questions', function (q) { return q.module_id === m.id; });
     finishAttemptInternal_(t, m, qs, json_(t.answers, {}), clk);

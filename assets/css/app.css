@@ -901,3 +901,33 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size
 .pick-note div > div { color: var(--text-2); }
 .pick-note.warn { background: color-mix(in srgb, var(--orange-t) 10%, transparent); border-color: color-mix(in srgb, var(--orange-t) 25%, transparent); }
 .pick-note.warn > svg { color: var(--orange-t); }
+
+/* Kuis: waktu dijeda saat internet terputus */
+.timer.paused { background: color-mix(in srgb, var(--orange) 18%, transparent); color: var(--orange-t); animation: none; }
+.timer-note { display: flex; align-items: center; gap: 6px; margin: -6px 2px 14px; font-size: 12px; line-height: 1.35; color: var(--text-2); }
+.timer-note svg { width: 13px; height: 13px; flex: none; }
+.resume-note { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 11px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.4;
+  background: color-mix(in srgb, var(--blue-t) 10%, transparent); color: var(--text); }
+.resume-note svg { flex: none; color: var(--blue-t); }
+.att-off { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 20px; background: rgba(10, 14, 30, .38);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2); backdrop-filter: blur(10px) saturate(1.2); opacity: 0; transition: opacity .25s var(--ease); }
+.att-off.in { opacity: 1; }
+.att-off-card { width: min(420px, 100%); padding: 26px 22px 20px; border-radius: 30px; text-align: center; transform: translateY(14px) scale(.97); transition: transform .35s var(--ease); }
+.att-off.in .att-off-card { transform: none; }
+.att-off-card .aic { width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 20px; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--orange) 18%, transparent); color: var(--orange-t); }
+.att-off-card h3 { margin: 0 0 14px; font-size: 21px; }
+.att-off-card p { margin: 12px 4px 0; font-size: 14.5px; line-height: 1.5; color: var(--text-2); }
+.att-off-time { display: grid; justify-items: center; gap: 2px; padding: 12px; border-radius: 20px; background: var(--fill); }
+.att-off-time span { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--orange-t); }
+.att-off-time b { font-size: 40px; line-height: 1.1; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+.att-off-time small { font-size: 12px; color: var(--text-2); }
+.att-off-st { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 14px 0 12px; font-size: 13px; color: var(--text-2); }
+.att-off-st .spinner { width: 16px; height: 16px; border-width: 2px; }
+.att-off-note { font-size: 12.5px !important; margin-top: 12px !important; }
+.att-off.bar { inset: auto 0 0 0; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; padding: 0 12px calc(12px + env(safe-area-inset-bottom)); display: block; pointer-events: none; }
+.att-off-bar { pointer-events: auto; max-width: 640px; margin: 0 auto; display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 14px; border-radius: 18px; font-size: 13.5px; line-height: 1.4; }
+.att-off-bar > svg { flex: none; color: var(--orange-t); }
+.att-off-bar span { flex: 1; }
+.live-att { margin-bottom: 18px; padding: 12px; border-radius: 20px; background: color-mix(in srgb, var(--orange) 7%, transparent); }
+.live-h { display: flex; align-items: center; gap: 6px; margin: 0 4px 10px; font-weight: 700; font-size: 14px; }

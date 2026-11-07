@@ -27,7 +27,9 @@ const CONFIG = {
   UPLOAD_FOLDER: 'LMS Sekolah - Unggahan',
   SESSION_DAYS: 7,                  // lama sesi login (hari)
   MAX_UPLOAD_MB: 10,                // batas ukuran per berkas
-  VERSION: '2.1.0'
+  QUIZ_HEARTBEAT_SEC: 30,           // kuis berwaktu: perangkat siswa melapor ke server tiap N detik
+  QUIZ_OFFLINE_SEC: 75,             // tanpa laporan lebih dari N detik = dianggap terputus (waktu dijeda)
+  VERSION: '2.2.0'
 };
 
 /* ---------------------------------------------------------------------------
@@ -42,7 +44,8 @@ const SCHEMA = {
   Sections:      ['id', 'course_id', 'title', 'summary', 'sort', 'visible'],
   Modules:       ['id', 'course_id', 'section_id', 'type', 'title', 'intro', 'config', 'sort', 'visible', 'open_date', 'due_date', 'max_grade', 'created_at'],
   Questions:     ['id', 'module_id', 'type', 'text', 'options', 'answer', 'points', 'sort'],
-  Attempts:      ['id', 'module_id', 'user_id', 'started_at', 'finished_at', 'layout', 'answers', 'score', 'max_score', 'grade', 'status', 'preview'],
+  Attempts:      ['id', 'module_id', 'user_id', 'started_at', 'finished_at', 'layout', 'answers', 'score', 'max_score', 'grade', 'status', 'preview',
+                  'time_used', 'last_seen', 'saved_at', 'pause_count', 'pause_ms', 'left_at'],
   Submissions:   ['id', 'module_id', 'user_id', 'text', 'files', 'status', 'submitted_at', 'grade', 'feedback', 'graded_by', 'graded_at'],
   Posts:         ['id', 'module_id', 'discussion_id', 'parent_id', 'user_id', 'subject', 'message', 'created_at'],
   Completions:   ['id', 'module_id', 'user_id', 'completed_at'],
@@ -935,7 +938,8 @@ function buildConfig_(t, c) {
       time_limit: Math.max(0, Math.min(600, num_(c.time_limit))), attempts: Math.max(0, Math.min(50, num_(c.attempts, 1))),
       grade_method: ['highest', 'average', 'first', 'last'].indexOf(c.grade_method) >= 0 ? c.grade_method : 'highest',
       shuffle: !!c.shuffle, shuffle_options: !!c.shuffle_options, review: c.review !== false,
-      pick: Math.max(0, Math.min(500, Math.floor(num_(c.pick))))   // 0 = semua soal; N = ambil N soal acak dari bank per percobaan
+      pick: Math.max(0, Math.min(500, Math.floor(num_(c.pick)))),  // 0 = semua soal; N = ambil N soal acak dari bank per percobaan
+      pause_offline: c.pause_offline !== false                       // waktu dijeda saat koneksi siswa terputus
     };
     case 'forum': return { teacher_only: !!c.teacher_only };
   }
@@ -1167,11 +1171,18 @@ function qOut_(q) {
   return { id: q.id, type: q.type, text: q.text, options: json_(q.options, []), answer: json_(q.answer, null), points: num_(q.points, 1), sort: num_(q.sort) };
 }
 
-function attOut_(t, users) {
+function attOut_(t, users, cfg) {
   const o = {
     id: t.id, user_id: t.user_id, started_at: num_(t.started_at), finished_at: num_(t.finished_at), status: t.status,
-    score: num_(t.score), max_score: num_(t.max_score), grade: num_(t.grade), preview: bool_(t.preview)
+    score: num_(t.score), max_score: num_(t.max_score), grade: num_(t.grade), preview: bool_(t.preview),
+    time_used: num_(t.time_used), pause_count: num_(t.pause_count), pause_ms: num_(t.pause_ms)
   };
+  if (cfg && t.status === 'inprogress') {
+    o.last_seen = num_(t.last_seen) || num_(t.started_at);
+    o.idle_ms = Math.max(0, now_() - o.last_seen);
+    o.offline = o.idle_ms > CONFIG.QUIZ_OFFLINE_SEC * 1000;
+    if (pauseMode_(cfg)) o.remaining = Math.max(0, attemptRemaining_(cfg, attemptClock_(t, now_()).time_used));
+  }
   if (users) { const x = users[t.user_id]; o.user = x ? briefUser_(x) : { name: '(dihapus)' }; }
   return o;
 }
@@ -1179,6 +1190,7 @@ function attOut_(t, users) {
 function quizState_(m, cfg, used, hasInprog, qCount) {
   const now = now_(), open = num_(m.open_date), close = num_(m.due_date);
   if (!qCount) return { can: false, reason: 'Kuis belum memiliki soal.' };
+  if (hasInprog && pauseMode_(cfg)) return { can: true, reason: '' };   // percobaan yang terputus tetap bisa dilanjutkan
   if (open && now < open) return { can: false, reason: 'Kuis belum dibuka.' };
   if (close && now > close) return { can: false, reason: 'Kuis sudah ditutup.' };
   if (hasInprog) return { can: true, reason: '' };
@@ -1207,13 +1219,13 @@ function quizView_(u, m, cfg, isT, c) {
   const samePts = pts.every(function (x) { return x === pts[0]; });
   const base = {
     questionCount: qs.length, totalPoints: round2_(pts.reduce(function (s, x) { return s + x; }, 0)),
-    pick: pick, shownCount: pick || qs.length,
+    pick: pick, shownCount: pick || qs.length, pauseOffline: pauseMode_(cfg),
     shownPoints: pick ? (samePts && pts.length ? round2_(pts[0] * pick) : null) : round2_(pts.reduce(function (s, x) { return s + x; }, 0))
   };
   const atts = DB.where('Attempts', function (t) { return t.module_id === m.id; });
   if (isT) {
     const users = mapBy_(DB.all('Users'), 'id');
-    const list = atts.filter(function (t) { return !bool_(t.preview); }).map(function (t) { return attOut_(t, users); })
+    const list = atts.filter(function (t) { return !bool_(t.preview); }).map(function (t) { return attOut_(t, users, cfg); })
       .sort(function (a, b) { return b.started_at - a.started_at; });
     const fin = list.filter(function (x) { return x.status === 'finished'; }), uniq = {};
     fin.forEach(function (x) { uniq[x.user_id] = 1; });
@@ -1232,8 +1244,9 @@ function quizView_(u, m, cfg, isT, c) {
   const inprog = mine.filter(function (t) { return t.status === 'inprogress'; })[0];
   const st = quizState_(m, cfg, fin.length, !!inprog, qs.length);
   return Object.assign(base, {
-    attempts: mine.map(function (t) { return attOut_(t); }), grade: quizGrade_(fin, cfg.grade_method),
-    canAttempt: st.can, reason: st.reason, inprogress: inprog ? inprog.id : null
+    attempts: mine.map(function (t) { return attOut_(t, null, cfg); }), grade: quizGrade_(fin, cfg.grade_method),
+    canAttempt: st.can, reason: st.reason, inprogress: inprog ? inprog.id : null,
+    resume: inprog && pauseMode_(cfg) ? { remaining: Math.max(0, attemptRemaining_(cfg, attemptClock_(inprog, now_()).time_used)) } : null
   });
 }
 
@@ -1356,7 +1369,7 @@ function cleanAnswers_(a) {
   return o;
 }
 
-function finishAttemptInternal_(t, m, qs, answers) {
+function finishAttemptInternal_(t, m, qs, answers, extra) {
   const qById = mapBy_(qs, 'id');
   let score = 0, max = 0;
   json_(t.layout, []).forEach(function (L) {
@@ -1367,7 +1380,7 @@ function finishAttemptInternal_(t, m, qs, answers) {
     score += pts * scoreQuestion_(q, answers[q.id]);
   });
   const grade = max ? round2_(score / max * num_(m.max_grade, 100)) : 0;
-  DB.update('Attempts', t.id, { answers: JSON.stringify(answers), finished_at: now_(), score: round2_(score), max_score: round2_(max), grade: grade, status: 'finished' });
+  DB.update('Attempts', t.id, Object.assign({ answers: JSON.stringify(answers), finished_at: now_(), score: round2_(score), max_score: round2_(max), grade: grade, status: 'finished' }, extra || {}));
   if (!bool_(t.preview)) markComplete_(m.id, t.user_id);
 }
 
@@ -1378,6 +1391,33 @@ function attemptDeadline_(att, m, cfg) {
   if (close && !bool_(att.preview) && (!dl || close < dl)) dl = close;
   return dl;
 }
+
+/* --- Jam kuis yang bisa dijeda ------------------------------------------------
+ * Waktu pengerjaan dihitung dari laporan (heartbeat) perangkat siswa ke server.
+ * Jeda antar-laporan ≤ QUIZ_OFFLINE_SEC dihitung penuh. Jeda yang lebih lama berarti
+ * siswa terputus: hanya QUIZ_HEARTBEAT_SEC yang dihitung, sisanya tidak memotong waktu.
+ * Jadi siswa yang internetnya putus 15 menit atau lebih tetap mendapat soal dan
+ * sisa waktu yang sama ketika kembali. Setiap jeda dicatat untuk guru. */
+function pauseMode_(cfg) { return num_(cfg.time_limit) > 0 && cfg.pause_offline !== false; }
+
+function attemptClock_(t, now, awayMs) {
+  const hb = CONFIG.QUIZ_HEARTBEAT_SEC * 1000, gap = CONFIG.QUIZ_OFFLINE_SEC * 1000;
+  const last = num_(t.last_seen) || num_(t.started_at), d = Math.max(0, now - last);
+  let used = num_(t.time_used), pc = num_(t.pause_count), pm = num_(t.pause_ms);
+  if (d <= gap) used += d;
+  else if (num_(t.left_at) && num_(t.left_at) >= last) used += d;   // keluar dengan sengaja saat masih online → waktu tetap berjalan
+  else {
+    // terputus: hanya waktu yang pasti dipakai (1 interval laporan + waktu pindah aplikasi saat online) yang dihitung
+    const counted = Math.min(d, hb + Math.min(Math.max(0, num_(awayMs)), 12 * 3600000));
+    used += counted;
+    if (d - counted > 1000) { pc += 1; pm += d - counted; }
+  }
+  return { time_used: used, last_seen: now, pause_count: pc, pause_ms: pm, left_at: '' };
+}
+
+function attemptRemaining_(cfg, used) { return num_(cfg.time_limit) * 60000 - used; }
+
+const QUIZ_GRACE_MS = 60000;   // toleransi keterlambatan kiriman setelah waktu habis
 
 function actStartAttempt_(ctx, p) {
   const u = ctx.user, a = moduleAccess_(u, p.id), m = a.module;
@@ -1391,7 +1431,7 @@ function actStartAttempt_(ctx, p) {
     att = mine.filter(function (t) { return bool_(t.preview) && t.status === 'inprogress'; })[0];
   } else {
     att = mine.filter(function (t) { return !bool_(t.preview) && t.status === 'inprogress'; })[0];
-    if (att) {
+    if (att && !pauseMode_(cfg)) {
       const dl = attemptDeadline_(att, m, cfg);
       if (dl && now_() > dl + 90000) {          // waktu habis → kirim otomatis jawaban terakhir
         finishAttemptInternal_(att, m, qs, json_(att.answers, {}));
@@ -1414,10 +1454,20 @@ function actStartAttempt_(ctx, p) {
       if (cfg.shuffle_options && (q.type === 'mc' || q.type === 'multi')) o = shuffle_(o);
       return { q: id, o: o };
     });
+    const t0 = now_();
     att = DB.insert('Attempts', {
-      id: uid_('at'), module_id: m.id, user_id: u.id, started_at: now_(), finished_at: '', layout: JSON.stringify(layout),
-      answers: '{}', score: '', max_score: '', grade: '', status: 'inprogress', preview: isT ? '1' : ''
+      id: uid_('at'), module_id: m.id, user_id: u.id, started_at: t0, finished_at: '', layout: JSON.stringify(layout),
+      answers: '{}', score: '', max_score: '', grade: '', status: 'inprogress', preview: isT ? '1' : '',
+      time_used: 0, last_seen: t0, saved_at: '', pause_count: 0, pause_ms: 0
     });
+  } else if (pauseMode_(cfg)) {
+    // melanjutkan percobaan: waktu selama terputus tidak dihitung
+    const clk = attemptClock_(att, now_());
+    if (attemptRemaining_(cfg, clk.time_used) <= -QUIZ_GRACE_MS) {
+      finishAttemptInternal_(att, m, qs, json_(att.answers, {}), clk);
+      return { finished: true, attempt_id: att.id };
+    }
+    att = DB.update('Attempts', att.id, clk);
   }
   const qById2 = mapBy_(qs, 'id');
   const questions = json_(att.layout, []).map(function (L) {
@@ -1430,10 +1480,21 @@ function actStartAttempt_(ctx, p) {
     };
   }).filter(Boolean);
   return {
-    attempt: { id: att.id, started_at: num_(att.started_at), deadline: attemptDeadline_(att, m, cfg), answers: json_(att.answers, {}), preview: bool_(att.preview), now: now_() },
+    attempt: attemptInfo_(att, m, cfg),
     quiz: { id: m.id, title: m.title, course_id: m.course_id, course: a.course.fullname, time_limit: cfg.time_limit || 0 },
     questions: questions
   };
+}
+
+function attemptInfo_(att, m, cfg) {
+  const pm = pauseMode_(cfg), o = {
+    id: att.id, started_at: num_(att.started_at), answers: json_(att.answers, {}), saved_at: num_(att.saved_at),
+    preview: bool_(att.preview), now: now_(), pause: pm, heartbeat: CONFIG.QUIZ_HEARTBEAT_SEC * 1000,
+    pause_count: num_(att.pause_count), pause_ms: num_(att.pause_ms)
+  };
+  if (pm) o.remaining = Math.max(0, attemptRemaining_(cfg, num_(att.time_used)));
+  else o.deadline = attemptDeadline_(att, m, cfg);
+  return o;
 }
 
 function ownAttempt_(u, id) {
@@ -1442,21 +1503,68 @@ function ownAttempt_(u, id) {
   return t;
 }
 
+/** Simpan jawaban sementara. Untuk kuis berwaktu, sekaligus menjadi laporan "masih terhubung". */
 function actSaveAttempt_(ctx, p) {
   const t = ownAttempt_(ctx.user, p.id);
-  if (t.status !== 'inprogress') fail_('Percobaan ini sudah selesai.');
-  const ans = JSON.stringify(cleanAnswers_(p.answers));
-  if (ans.length > 45000) fail_('Jawaban terlalu panjang.');
-  DB.update('Attempts', t.id, { answers: ans });
-  return { saved: now_() };
+  if (t.status !== 'inprogress') return { finished: true, attempt_id: t.id };
+  const m = DB.get('Modules', t.module_id), cfg = json_(m.config, {}), now = now_();
+  const patch = {};
+  if (p.answers !== undefined && p.answers !== null) {
+    const ans = JSON.stringify(cleanAnswers_(p.answers));
+    if (ans.length > 45000) fail_('Jawaban terlalu panjang.');
+    patch.answers = ans; patch.saved_at = now;
+  }
+  if (!pauseMode_(cfg)) {
+    if (patch.answers) DB.update('Attempts', t.id, patch);
+    return { saved: now };
+  }
+  const clk = attemptClock_(t, now, p.away), left = attemptRemaining_(cfg, clk.time_used);
+  if (left <= -QUIZ_GRACE_MS) {               // waktu sudah habis → nilai dengan jawaban tersimpan sebelumnya
+    const qs = DB.where('Questions', function (q) { return q.module_id === m.id; });
+    finishAttemptInternal_(t, m, qs, json_(t.answers, {}), clk);
+    return { finished: true, attempt_id: t.id };
+  }
+  DB.update('Attempts', t.id, Object.assign(patch, clk));
+  return { saved: now, remaining: Math.max(0, left), now: now };
 }
 
 function actFinishAttempt_(ctx, p) {
   const t = ownAttempt_(ctx.user, p.id);
   if (t.status !== 'inprogress') return { id: t.id, already: true };
-  const m = DB.get('Modules', t.module_id);
+  const m = DB.get('Modules', t.module_id), cfg = json_(m.config, {});
   const qs = DB.where('Questions', function (q) { return q.module_id === m.id; });
-  finishAttemptInternal_(t, m, qs, p.answers ? cleanAnswers_(p.answers) : json_(t.answers, {}));
+  let answers = p.answers ? cleanAnswers_(p.answers) : json_(t.answers, {}), extra = null;
+  if (pauseMode_(cfg)) {
+    extra = attemptClock_(t, now_());
+    if (attemptRemaining_(cfg, extra.time_used) <= -QUIZ_GRACE_MS) answers = json_(t.answers, {});   // kiriman terlambat tidak diterima
+    extra.time_used = Math.min(extra.time_used, num_(cfg.time_limit) * 60000);
+  }
+  finishAttemptInternal_(t, m, qs, answers, extra);
+  return { id: t.id };
+}
+
+/** Siswa meninggalkan kuis dengan sengaja (menutup halaman/keluar) saat masih online: waktu tetap berjalan. */
+function actLeaveAttempt_(ctx, p) {
+  const t = ownAttempt_(ctx.user, p.id);
+  if (t.status !== 'inprogress') return { finished: true };
+  const m = DB.get('Modules', t.module_id), cfg = json_(m.config, {}), now = now_(), patch = {};
+  if (p.answers !== undefined && p.answers !== null) {
+    const ans = JSON.stringify(cleanAnswers_(p.answers));
+    if (ans.length <= 45000) { patch.answers = ans; patch.saved_at = now; }
+  }
+  if (pauseMode_(cfg)) Object.assign(patch, attemptClock_(t, now, p.away), { left_at: now });
+  if (Object.keys(patch).length) DB.update('Attempts', t.id, patch);
+  return { ok: true };
+}
+
+/** Guru mengakhiri percobaan siswa yang masih terbuka (mis. siswa tidak kembali setelah terputus). */
+function actEndAttempt_(ctx, p) {
+  const t = DB.get('Attempts', p.id);
+  if (!t) fail_('Percobaan tidak ditemukan.');
+  const m = moduleAccess_(ctx.user, t.module_id, true).module;
+  if (t.status !== 'inprogress') return { id: t.id, already: true };
+  const qs = DB.where('Questions', function (q) { return q.module_id === m.id; });
+  finishAttemptInternal_(t, m, qs, json_(t.answers, {}));
   return { id: t.id };
 }
 
@@ -2095,6 +2203,8 @@ const ACTIONS = {
   finishAttempt: { fn: actFinishAttempt_ },
   review: { fn: actReview_ },
   deleteAttempt: { fn: actDeleteAttempt_ },
+  endAttempt: { fn: actEndAttempt_ },
+  leaveAttempt: { fn: actLeaveAttempt_ },
   discussion: { fn: actDiscussion_ },
   forumPost: { fn: actForumPost_ },
   deletePost: { fn: actDeletePost_ },

@@ -6,7 +6,7 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.2.0';
 const markReady = () => { window.__LMS_READY = true; };
 
 /* ---------------------------------------------------------------- state */
@@ -152,6 +152,8 @@ const ICONS = {
   sparkle: '<path d="M12 3.5c.6 4.2 2.3 5.9 6.5 6.5-4.2.6-5.9 2.3-6.5 6.5-.6-4.2-2.3-5.9-6.5-6.5 4.2-.6 5.9-2.3 6.5-6.5zM19 15.5c.3 1.9 1 2.6 2.5 3-1.5.4-2.2 1.1-2.5 3-.3-1.9-1-2.6-2.5-3 1.5-.4 2.2-1.1 2.5-3z"/>',
   palette: '<path d="M12 21.5a9.5 9.5 0 1 1 9.5-9.5c0 2.8-2.2 4-4.5 4H15a2 2 0 0 0-1.4 3.4c.9 1 .2 2.1-1.6 2.1z"/><circle cx="7.5" cy="11" r="1.2" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/>',
   shuffle: '<path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/><path d="m18 14 4 4-4 4"/>',
+  wifioff: '<path d="M12 20h.01"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/><path d="M5 12.86a10 10 0 0 1 5.17-2.69"/><path d="M19 12.86a10 10 0 0 0-2.01-1.52"/><path d="M2 8.82a15 15 0 0 1 4.18-2.65"/><path d="M22 8.82a15 15 0 0 0-11.29-3.76"/><path d="m2 2 20 20"/>',
+  pause: '<rect x="6" y="4.5" width="4" height="15" rx="1.2"/><rect x="14" y="4.5" width="4" height="15" rx="1.2"/>',
 };
 const ic = (n, c) => '<svg class="ic ' + (c || '') + '" aria-hidden="true"><use href="#i-' + n + '"/></svg>';
 function buildSprite() {
@@ -261,9 +263,11 @@ function postJSON(url, body, ms) {
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(body), signal: ctrl ? ctrl.signal : undefined
   }).then(r => r.text(), e => {
-    throw new Error(e && e.name === 'AbortError'
+    const err = new Error(e && e.name === 'AbortError'
       ? 'Server terlalu lama merespons. Periksa koneksi lalu coba lagi.'
       : 'Tidak dapat terhubung ke server. Periksa koneksi internet; jika tetap gagal, pastikan deployment Apps Script diatur “Siapa saja”.');
+    err.net = true;
+    throw err;
   }).then(t => {
     let r;
     try { r = JSON.parse(t); }
@@ -278,9 +282,9 @@ function postJSON(url, body, ms) {
     throw err;
   }).finally(() => clearTimeout(timer));
 }
-function call(action, payload) {
+function call(action, payload, ms) {
   if (!S.apiUrl) return Promise.reject(new Error('Server belum dihubungkan. Buka halaman Pasang untuk mengisi URL Apps Script.'));
-  return postJSON(S.apiUrl, { action, token: S.token, payload: payload || {} });
+  return postJSON(S.apiUrl, { action, token: S.token, payload: payload || {} }, ms);
 }
 async function api(action, payload, opt) {
   try { return await call(action, payload); }
@@ -920,6 +924,7 @@ function handleAuthLost(msg) {
   LS.del('token'); LS.del('boot');
   S.token = null; S.user = null; S.cache.clear();
   if (S.onLeave) { try { S.onLeave(); } catch (e) { /* abaikan */ } S.onLeave = null; }
+  attStop(false);
   clearInterval(S.notifTimer);
   closeAllOverlays();
   showLogin(was ? msg : null);
@@ -990,6 +995,7 @@ function onLoggedIn(r) {
 async function logout() {
   const ok = await ask({ title: 'Keluar dari akun?', message: 'Anda perlu masuk kembali untuk mengakses mata pelajaran.', ok: 'Keluar', danger: true, icon: 'logout' });
   if (!ok) return;
+  attStop(true);
   try { await call('logout'); } catch (e) { /* abaikan */ }
   S.user = { id: 0 };
   handleAuthLost(null);
@@ -1520,7 +1526,7 @@ function openModuleForm(type, o) {
   if (type === 'quiz') {
     body += dates('Dibuka', 'Ditutup') + `<div class="row3">${fInput('time_limit', 'Batas waktu (menit)', m ? cfg.time_limit || 0 : 30, { type: 'number', attrs: 'min="0" max="600"', hint: '0 = tanpa batas' })}${fInput('attempts', 'Kesempatan', m ? cfg.attempts || 0 : 1, { type: 'number', attrs: 'min="0" max="50"', hint: '0 = tak terbatas' })}${fInput('max_grade', 'Nilai maksimal', m ? m.max_grade : 100, { type: 'number', attrs: 'min="1" max="1000"' })}</div>
       <div class="row2">${fSelect('grade_method', 'Metode penilaian', Object.keys(GM).map(k => [k, GM[k]]), cfg.grade_method || 'highest')}${fInput('pick', 'Jumlah soal yang tampil', m ? cfg.pick || 0 : 0, { type: 'number', attrs: 'min="0" max="500"', hint: '0 = semua soal. Isi mis. 25 → tiap siswa mendapat 25 soal acak dari bank soal.' })}</div>
-      <div class="opt-stack">${fSwitch('shuffle', 'Acak urutan soal', 'Setiap siswa mendapat urutan soal berbeda.', !!cfg.shuffle)}${fSwitch('shuffle_options', 'Acak urutan opsi jawaban', 'Untuk soal pilihan ganda.', m ? !!cfg.shuffle_options : true)}${fSwitch('review', 'Tampilkan kunci jawaban', 'Siswa dapat melihat jawaban benar setelah selesai.', cfg.review !== false)}</div>`;
+      <div class="opt-stack">${fSwitch('shuffle', 'Acak urutan soal', 'Setiap siswa mendapat urutan soal berbeda.', !!cfg.shuffle)}${fSwitch('shuffle_options', 'Acak urutan opsi jawaban', 'Untuk soal pilihan ganda.', m ? !!cfg.shuffle_options : true)}${fSwitch('review', 'Tampilkan kunci jawaban', 'Siswa dapat melihat jawaban benar setelah selesai.', cfg.review !== false)}${fSwitch('pause_offline', 'Jeda waktu saat internet terputus', 'Untuk kuis berbatas waktu: sisa waktu tidak berkurang selama koneksi siswa putus, lalu siswa melanjutkan dengan soal yang sama.', cfg.pause_offline !== false)}</div>`;
   }
   if (type === 'forum') body += fSwitch('teacher_only', 'Hanya guru yang dapat memulai diskusi', 'Cocok untuk forum pengumuman. Siswa tetap dapat membalas.', !!cfg.teacher_only);
   body += `<div class="row2">${fSelect('section_id', 'Topik', secOpts, secVal)}<div class="field"><label class="lbl">Visibilitas</label>${fSwitch('visible', 'Tampilkan untuk siswa', '', m ? m.visible : true)}</div></div></div>`;
@@ -1538,8 +1544,8 @@ function openModuleForm(type, o) {
       if (type === 'quiz') {
         const pick = Math.floor(+fv(r, 'pick') || 0);
         if (pick < 0 || pick > 500) throw new Error('Jumlah soal yang tampil harus 0–500.');
-        p.config = { time_limit: +fv(r, 'time_limit') || 0, attempts: +fv(r, 'attempts') || 0, grade_method: fv(r, 'grade_method'), shuffle: fv(r, 'shuffle'), shuffle_options: fv(r, 'shuffle_options'), review: fv(r, 'review'), pick };
-        if (pick && verLess(S.settings && S.settings.version, '2.1.0')) setTimeout(() => toast('Fitur "jumlah soal yang tampil" butuh Code.gs v2.1.0. Perbarui Code.gs di Apps Script lalu buat versi deployment baru.', 'error'), 600);
+        p.config = { time_limit: +fv(r, 'time_limit') || 0, attempts: +fv(r, 'attempts') || 0, grade_method: fv(r, 'grade_method'), shuffle: fv(r, 'shuffle'), shuffle_options: fv(r, 'shuffle_options'), review: fv(r, 'review'), pick, pause_offline: fv(r, 'pause_offline') };
+        if (verLess(S.settings && S.settings.version, '2.2.0')) setTimeout(() => toast('Pengaturan kuis terbaru butuh Code.gs v2.2.0. Perbarui Code.gs di Apps Script lalu buat versi deployment baru.', 'error'), 600);
       }
       if (type === 'forum') p.config = { teacher_only: fv(r, 'teacher_only') };
       if (type === 'file') {
@@ -1915,6 +1921,7 @@ function quizInfoGroup(d) {
     <div class="gi"><span class="k">Dibuka</span><span class="v">${m.open_date ? fDT(m.open_date) : 'Kapan saja'}</span></div>
     <div class="gi"><span class="k">Ditutup</span><span class="v">${m.due_date ? fDT(m.due_date) : 'Tidak ditutup'}</span></div>
     <div class="gi"><span class="k">Batas waktu pengerjaan</span><span class="v">${c.time_limit ? c.time_limit + ' menit' : 'Tanpa batas'}</span></div>
+    ${c.time_limit ? `<div class="gi"><span class="k">Jika internet terputus</span><span class="v">${d.pauseOffline ? 'Waktu dijeda — lanjutkan dengan soal & sisa waktu yang sama' : 'Waktu tetap berjalan'}</span></div>` : ''}
     <div class="gi"><span class="k">Kesempatan mengerjakan</span><span class="v">${c.attempts ? c.attempts + ' kali' : 'Tak terbatas'}</span></div>
     <div class="gi"><span class="k">Metode penilaian</span><span class="v">${GM[c.grade_method] || GM.highest}</span></div>
     <div class="gi"><span class="k">Jumlah soal</span><span class="v">${quizCountText(d)}</span></div></div>`;
@@ -1934,8 +1941,9 @@ function verLess(a, b) {
 function quizStudentHTML(d) {
   const m = d.module, fin = d.attempts.filter(a => a.status === 'finished');
   const btn = d.canAttempt ? `<button class="btn btn-primary btn-lg" data-act="quizStart">${ic('play', 'sm')} ${d.inprogress ? 'Lanjutkan percobaan' : fin.length ? 'Kerjakan lagi' : 'Mulai mengerjakan'}</button>` : `<span class="chip" style="height:32px;padding:0 14px">${ic('info')} ${esc(d.reason)}</span>`;
+  const resume = d.canAttempt && d.inprogress && d.resume ? `<div class="resume-note">${ic('pause', 'sm')}<span>Percobaan Anda masih tersimpan — sisa waktu <b>${fmtLeft(d.resume.remaining)}</b>, soal tetap sama.</span></div>` : '';
   const pct = d.grade !== null ? d.grade / m.max_grade * 100 : 0;
-  return `<section class="card glass"><div class="card-h"><h3>${ic('quiz')} Informasi kuis</h3></div>${quizInfoGroup(d)}<div class="row" style="justify-content:center;margin-top:20px">${btn}</div></section>
+  return `<section class="card glass"><div class="card-h"><h3>${ic('quiz')} Informasi kuis</h3></div>${quizInfoGroup(d)}${resume}<div class="row" style="justify-content:center;margin-top:20px">${btn}</div></section>
     ${d.attempts.length ? `<section class="card glass"><div class="card-h"><h3>${ic('clock')} Ringkasan percobaan</h3>${d.grade !== null ? `<div class="row">${ringBox(pct, 56, fNum(d.grade), pct >= 75 ? 'var(--green)' : pct >= 55 ? 'var(--orange)' : 'var(--red)', 15)}<div><b>Nilai akhir</b><div class="faint" style="font-size:12.5px">dari ${fNum(m.max_grade)}</div></div></div>` : ''}</div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>Status</th><th>Selesai</th><th class="num">Poin</th><th class="num">Nilai</th><th></th></tr></thead><tbody>${d.attempts.map((a, i) => `<tr><td>${i + 1}</td><td>${a.status === 'finished' ? '<span class="chip green">Selesai</span>' : '<span class="chip orange">Sedang dikerjakan</span>'}</td><td>${a.finished_at ? fDT(a.finished_at) : '—'}</td><td class="num">${a.status === 'finished' ? fNum(a.score) + '/' + fNum(a.max_score) : '—'}</td><td class="num">${a.status === 'finished' ? `<span class="gcell ${gClass(a.grade / m.max_grade * 100)}">${fNum(a.grade)}</span>` : '—'}</td><td class="num">${a.status === 'finished' ? `<button class="btn btn-plain btn-sm" data-go="/review/${a.id}">Tinjau</button>` : ''}</td></tr>`).join('')}</tbody></table></div></section>` : ''}`;
 }
@@ -1952,14 +1960,17 @@ async function loadQuizTab(tab) {
   const d = S.mod;
   if (tab === 'info') { box.innerHTML = quizInfoGroup(d); return; }
   if (tab === 'results') {
-    const list = d.attempts.filter(a => a.status === 'finished');
-    box.innerHTML = list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Siswa</th><th>Mulai</th><th>Durasi</th><th class="num">Poin</th><th class="num">Nilai</th><th></th></tr></thead><tbody>${list.map(a => `<tr><td><div class="row" style="gap:8px">${av(a.user, 'xs')}<div><b style="font-size:13.5px">${esc(a.user.name)}</b><div class="faint" style="font-size:12px">${esc(a.user.kelas || '')}</div></div></div></td><td>${fDT(a.started_at)}</td><td>${dur(a.finished_at - a.started_at)}</td><td class="num">${fNum(a.score)}/${fNum(a.max_score)}</td><td class="num"><span class="gcell ${gClass(a.grade / d.module.max_grade * 100)}">${fNum(a.grade)}</span></td><td class="num nowrap"><button class="btn btn-plain btn-sm" data-go="/review/${a.id}">Tinjau</button><button class="btn btn-plain btn-icon btn-sm" data-act="attDel" data-id="${a.id}" aria-label="Hapus percobaan" style="color:var(--red)">${ic('trash', 'sm')}</button></td></tr>`).join('')}</tbody></table></div>` : emptyHTML('clock', 'Belum ada percobaan', 'Hasil akan muncul setelah siswa menyelesaikan kuis.');
+    const list = d.attempts.filter(a => a.status === 'finished'), live = d.attempts.filter(a => a.status === 'inprogress');
+    const who = a => `<div class="row" style="gap:8px">${av(a.user, 'xs')}<div><b style="font-size:13.5px">${esc(a.user.name)}</b><div class="faint" style="font-size:12px">${esc(a.user.kelas || '')}</div></div></div>`;
+    const liveHTML = live.length ? `<div class="live-att"><div class="live-h">${ic('clock', 'sm')} Sedang mengerjakan (${live.length})</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Siswa</th><th>Status</th><th>Sisa waktu</th><th></th></tr></thead><tbody>${live.map(a => `<tr><td>${who(a)}</td><td>${a.offline ? `<span class="chip orange">${ic('wifioff', 'sm')} Terputus · dijeda</span><div class="faint" style="font-size:12px;margin-top:3px">terakhir aktif ${short2(dur(a.idle_ms || 0))} lalu</div>` : '<span class="chip green">Online</span>'}${a.pause_count ? `<div class="faint" style="font-size:12px;margin-top:3px">${pauseText(a)}</div>` : ''}</td><td>${a.remaining != null ? fmtLeft(a.remaining) : '—'}</td><td class="num"><button class="btn btn-plain btn-sm" data-act="attEnd" data-id="${a.id}">Akhiri & nilai</button></td></tr>`).join('')}</tbody></table></div></div>` : '';
+    box.innerHTML = liveHTML + (list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Siswa</th><th>Mulai</th><th>Durasi</th><th class="num">Poin</th><th class="num">Nilai</th><th></th></tr></thead><tbody>${list.map(a => `<tr><td>${who(a)}</td><td>${fDT(a.started_at)}</td><td>${dur(a.time_used || a.finished_at - a.started_at)}${a.pause_count ? `<div class="chip orange" style="margin-top:4px" title="Waktu selama terputus tidak dihitung">${ic('wifioff', 'sm')} ${pauseText(a)}</div>` : ''}</td><td class="num">${fNum(a.score)}/${fNum(a.max_score)}</td><td class="num"><span class="gcell ${gClass(a.grade / d.module.max_grade * 100)}">${fNum(a.grade)}</span></td><td class="num nowrap"><button class="btn btn-plain btn-sm" data-go="/review/${a.id}">Tinjau</button><button class="btn btn-plain btn-icon btn-sm" data-act="attDel" data-id="${a.id}" aria-label="Hapus percobaan" style="color:var(--red)">${ic('trash', 'sm')}</button></td></tr>`).join('')}</tbody></table></div>` : live.length ? '' : emptyHTML('clock', 'Belum ada percobaan', 'Hasil akan muncul setelah siswa menyelesaikan kuis.'));
     return;
   }
   box.innerHTML = `<div class="sk sk-line"></div><div class="sk sk-line"></div><div class="sk sk-line" style="width:60%"></div>`;
   try { S.questions = await api('questions', { module_id: d.module.id }); } catch (e) { box.innerHTML = ''; return; }
   drawQuestions();
 }
+function pauseText(a) { return `Terputus ${a.pause_count}× · ${dur(a.pause_ms)}`; }
 function drawQuestions() {
   const box = $('#quizTab'), qs = S.questions || [];
   if (!box) return;
@@ -2243,28 +2254,153 @@ function openImportQuestions() {
 }
 
 /* ---------------------------------------------------------------- quiz attempt */
+/*  Kuis berwaktu memakai jam server yang bisa dijeda: perangkat melapor ("heartbeat") tiap 30 detik.
+ *  Bila internet putus, layar kuis dikunci dan waktu berhenti; jawaban disimpan di perangkat.
+ *  Setelah tersambung lagi (atau kuis dibuka ulang, juga dari perangkat lain), siswa melanjutkan
+ *  dengan soal dan sisa waktu yang sama. Pindah aplikasi/menutup halaman dengan sengaja tetap dihitung. */
 async function pageAttempt(moduleId) {
   setChrome({ title: 'Kuis', back: '/mod/' + moduleId, focus: true });
   skel();
+  if (S.att && !S.att.done) attStop(S.att.d.quiz.id !== moduleId);   // percobaan lain yang masih berjalan di latar
   let d;
   try { d = await api('startAttempt', { id: moduleId }); } catch (e) { go('/mod/' + moduleId, true); return; }
   if (S.path !== '/attempt/' + moduleId) return;
   if (d.finished) { toast('Waktu habis — jawaban terakhir Anda dikirim otomatis.', 'info'); go('/review/' + d.attempt_id, true); return; }
-  const A = S.att = { d, i: 0, ans: Object.assign({}, d.attempt.answers || {}), flags: LS.get('flag_' + d.attempt.id, {}), dirty: false, skew: d.attempt.now - Date.now(), finishing: false, summary: false, dir: 'in-r' };
+  const at = d.attempt, skew = at.now - Date.now(), local = LS.get('att_' + at.id, null);
+  let ans = Object.assign({}, at.answers || {}), dirty = false, i = 0;
+  if (local && local.ans && local.ts > (at.saved_at || 0)) { ans = local.ans; dirty = JSON.stringify(ans) !== JSON.stringify(at.answers || {}); }
+  if (local && local.i >= 0 && local.i < d.questions.length) i = local.i;
+  const A = S.att = {
+    d, i, ans, dirty, skew, flags: LS.get('flag_' + at.id, {}), finishing: false, summary: false, dir: 'in-r',
+    pm: !!at.pause, left: at.remaining || 0, syncAt: Date.now(), online: true, hbMs: at.heartbeat || 30000, away: 0, lastTick: Date.now()
+  };
   setChrome({ title: d.quiz.title, back: '/mod/' + moduleId, focus: true });
   renderAttempt();
-  if (d.attempt.deadline) { A.timer = setInterval(tick, 1000); tick(); }
-  A.autosave = setInterval(() => saveAttempt(), 25000);
+  if (at.deadline || A.pm) A.timer = setInterval(tick, 1000);
+  A.hbTimer = setInterval(hb, A.pm ? A.hbMs : 25000);
+  if (dirty) hb();
   const bu = () => { if (A.dirty) saveAttempt(); };
   window.addEventListener('beforeunload', bu);
-  S.onLeave = () => { clearInterval(A.timer); clearInterval(A.autosave); window.removeEventListener('beforeunload', bu); if (A.dirty && !A.finishing) saveAttempt(); };
+  S.onLeave = () => {
+    window.removeEventListener('beforeunload', bu);
+    attOfflineUI(null);
+    if (A.done) return;
+    if (A.pm) { if (A.dirty) hb(); return; }    // kuis berwaktu tetap berjalan di latar saat siswa membuka halaman lain
+    attStop(false);
+  };
 }
+function attCache(A) { if (A && !A.done) LS.set('att_' + A.d.attempt.id, { ans: A.ans, ts: Date.now() + A.skew, i: A.i }); }
+function markDirty() { const A = S.att; if (!A) return; A.dirty = true; attCache(A); }
+function attStop(leave) {
+  const A = S.att;
+  if (!A) return;
+  clearInterval(A.timer); clearInterval(A.hbTimer); clearInterval(A.retry); A.retry = 0;
+  if (leave && A.pm && !A.done && A.online) attLeave(A, false);
+  A.done = true;
+  if (S.att === A) S.att = null;
+  attOfflineUI(null);
+}
+/** Beri tahu server bahwa siswa keluar dengan sengaja saat masih online: waktu tetap berjalan. */
+function attLeave(A, beacon) {
+  const payload = { id: A.d.attempt.id };
+  if (A.dirty) payload.answers = A.ans;
+  if (beacon && !DEMO && navigator.sendBeacon) {
+    try { navigator.sendBeacon(S.apiUrl, new Blob([JSON.stringify({ action: 'leaveAttempt', token: S.token, payload })], { type: 'text/plain;charset=utf-8' })); } catch (e) { /* abaikan */ }
+  } else call('leaveAttempt', payload, 8000).catch(() => {});
+}
+function attLeft(A) {
+  if (A.pm) return A.online && !A.stale ? A.left - (Date.now() - A.syncAt) : A.shown != null ? A.shown : A.left;
+  return A.d.attempt.deadline ? A.d.attempt.deadline - (Date.now() + A.skew) : Infinity;
+}
+function fmtLeft(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
+  return (h ? h + ':' + pad(mm) : pad(mm)) + ':' + pad(ss);
+}
+async function hb() {
+  const A = S.att;
+  if (!A || A.done || A.finishing || A.hbBusy) return;
+  if (!A.pm && !A.dirty && !A.offline) return;
+  A.hbBusy = true;
+  const sendAns = A.dirty, away = A.away, payload = { id: A.d.attempt.id };
+  if (sendAns) payload.answers = A.ans;
+  if (away) payload.away = away;
+  A.dirty = false;
+  try {
+    const r = await call('saveAttempt', payload, 15000);
+    if (A.done) return;
+    A.away = Math.max(0, A.away - away);
+    if (r && r.finished) { attOver(A, 'Waktu kuis sudah habis. Jawaban terakhir yang tersimpan sudah dikirim.'); return; }
+    if (A.pm && r && r.remaining != null) { A.left = r.remaining; A.syncAt = Date.now(); A.stale = false; A.shown = null; }
+    if (A.offline) attOnline(A);
+  } catch (e) {
+    if (sendAns) A.dirty = true;
+    if (e.auth) { handleAuthLost(e.message); return; }
+    if (e.net) attOffline(A);
+  } finally { A.hbBusy = false; }
+}
+function attOffline(A) {
+  if (!A || A.done) return;
+  if (A.pm && A.online) { A.left = attLeft(A); A.syncAt = Date.now(); A.online = false; }
+  A.offline = true;
+  attOfflineUI(A);
+  if (!A.retry) A.retry = setInterval(hb, 5000);
+}
+function attOnline(A) {
+  A.online = true; A.offline = false;
+  clearInterval(A.retry); A.retry = 0;
+  attOfflineUI(null);
+  if (S.path === '/attempt/' + A.d.quiz.id) toast(A.pendingFinish ? 'Tersambung kembali — mengirim jawaban…' : 'Tersambung kembali. Kuis dilanjutkan dengan sisa waktu yang sama.', 'success');
+  if (A.pendingFinish) { A.pendingFinish = false; finishAttempt(A.pendingAuto); }
+}
+function attOver(A, msg) {
+  const id = A.d.attempt.id, here = S.path === '/attempt/' + A.d.quiz.id;
+  attStop(false);
+  LS.del('att_' + id); LS.del('flag_' + id);
+  S.cache.clear();
+  toast(msg, 'info');
+  if (here) { S.onLeave = null; go('/review/' + id, true); }
+}
+/** Lapisan "Koneksi terputus". Kuis berwaktu: layar dikunci & waktu dijeda. Tanpa jeda: hanya pemberitahuan. */
+function attOfflineUI(A) {
+  let el = $('#attOff');
+  if (!A || S.path !== '/attempt/' + A.d.quiz.id) { if (el) { el.classList.remove('in'); setTimeout(() => el.remove(), 250); el.id = ''; } return; }
+  const lock = A.pm, timed = A.pm || !!A.d.attempt.deadline;
+  if (!el) {
+    el = document.createElement('div'); el.id = 'attOff';
+    el.className = lock ? 'att-off' : 'att-off bar';
+    el.setAttribute('role', lock ? 'alertdialog' : 'status'); el.setAttribute('aria-live', 'assertive');
+    document.body.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('in'));
+  }
+  el.innerHTML = lock
+    ? `<div class="att-off-card glass thick"><div class="aic">${ic('wifioff', 'lg')}</div><h3>Koneksi internet terputus</h3>
+      <div class="att-off-time"><span>${ic('pause', 'sm')} Waktu dijeda</span><b id="offLeft">${fmtLeft(attLeft(A))}</b><small>sisa waktu</small></div>
+      <p>${A.pendingFinish ? 'Jawabanmu belum terkirim. Jawaban akan dikirim otomatis begitu internet kembali.' : 'Jawabanmu aman tersimpan di perangkat ini. Kuis berlanjut otomatis setelah internet kembali, dengan <b>soal dan sisa waktu yang sama</b>.'}</p>
+      <div class="att-off-st"><span class="spinner"></span> Mencoba menyambung kembali…</div>
+      <button class="btn btn-primary w100" data-act="attRetry">${ic('refresh', 'sm')} Coba sambungkan sekarang</button>
+      <p class="faint att-off-note">Boleh juga menutup halaman ini. Nanti buka lagi kuis ini, lalu ketuk <b>Lanjutkan percobaan</b>.</p></div>`
+    : `<div class="att-off-bar glass">${ic('wifioff', 'sm')}<span><b>Koneksi terputus.</b> Jawaban disimpan di perangkat dan dikirim otomatis saat internet kembali.${timed ? ' Waktu tetap berjalan.' : ''}</span><button class="btn btn-sm btn-tinted" data-act="attRetry">Coba lagi</button></div>`;
+}
+window.addEventListener('offline', () => { const A = S.att; if (A && !A.done) { A.sawOffline = true; if (!document.hidden) attOffline(A); } });
+window.addEventListener('online', () => { const A = S.att; if (A && !A.done) hb(); });
+document.addEventListener('visibilitychange', () => {
+  const A = S.att;
+  if (!A || A.done || !A.pm) return;
+  if (document.hidden) { A.hiddenAt = Date.now(); A.hiddenOnline = A.online && navigator.onLine !== false; A.sawOffline = false; return; }
+  if (A.hiddenAt) {
+    const ms = Date.now() - A.hiddenAt;
+    A.hiddenAt = 0;
+    if (A.hiddenOnline && !A.sawOffline && navigator.onLine !== false) A.away += ms;   // pindah aplikasi/tab saat online: waktu tetap dihitung
+  }
+  hb();
+});
+window.addEventListener('pagehide', () => { const A = S.att; if (A && !A.done && A.pm && A.online && navigator.onLine !== false) attLeave(A, true); });
 function isAnswered(q) { const a = S.att.ans[q.id]; return !(a === undefined || a === null || a === '' || (Array.isArray(a) && !a.length)); }
 function renderAttempt() {
   const A = S.att, d = A.d, qs = d.questions, n = qs.length;
   const answered = qs.filter(isAnswered).length;
   const side = `<aside class="att-side glass"><div class="row between" style="margin-bottom:12px"><b>${d.attempt.preview ? 'Pratinjau (guru)' : 'Navigasi soal'}</b><span class="faint" style="font-size:12.5px" id="ansCount">${answered}/${n} dijawab</span></div>
-    ${d.attempt.deadline ? `<div class="timer" id="timer">${ic('clock')}<span>--:--</span></div>` : ''}
+    ${d.attempt.deadline || A.pm ? `<div class="timer ${A.pm && !A.online ? 'paused' : ''}" id="timer">${ic('clock')}<span>${A.pm || d.attempt.deadline ? fmtLeft(attLeft(A)) : '--:--'}</span></div>${A.pm ? `<div class="timer-note">${ic('pause', 'sm')} Waktu berhenti otomatis bila internet terputus</div>` : ''}` : ''}
     <div class="qnav" id="qnav">${qs.map((x, k) => `<button class="qn ${isAnswered(x) ? 'ans' : ''} ${k === A.i && !A.summary ? 'cur' : ''} ${A.flags[x.id] ? 'flag' : ''}" data-act="qGo" data-k="${k}" aria-label="Soal ${k + 1}">${k + 1}</button>`).join('')}</div>
     <button class="btn btn-tinted w100" style="margin-top:14px" data-act="attSummary">Selesaikan percobaan…</button></aside>`;
   let main;
@@ -2279,7 +2415,7 @@ function renderAttempt() {
   }
   setView(`<div class="att"><div>${main}</div>${side}</div>`, false);
   const sa = $('#shortAns');
-  if (sa) sa.addEventListener('input', () => { A.ans[sa.dataset.q] = sa.value; A.dirty = true; refreshQNav(); });
+  if (sa) sa.addEventListener('input', () => { A.ans[sa.dataset.q] = sa.value; markDirty(); refreshQNav(); });
   tick();
 }
 function questionHTML(q, k) {
@@ -2301,39 +2437,60 @@ function refreshQNav() {
 }
 function tick() {
   const A = S.att;
-  if (!A || !A.d.attempt.deadline) return;
-  const left = A.d.attempt.deadline - (Date.now() + A.skew), el = $('#timer');
+  if (!A || A.done) return;
+  const now = Date.now(), jump = now - A.lastTick;
+  A.lastTick = now;
+  if (A.pm && A.online && (jump > 4000 || now - A.syncAt > A.hbMs * 2 + 10000)) {
+    if (!A.stale) { A.shown = Math.max(0, A.left - (now - jump - A.syncAt)); A.stale = true; }   // perangkat sempat tertidur → tahan tampilan, sinkronkan dulu
+    hb();
+  }
+  if (!A.pm && !A.d.attempt.deadline) return;
+  const left = attLeft(A), el = $('#timer'), off = $('#offLeft');
   if (el) {
-    const s = Math.max(0, Math.floor(left / 1000)), h = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
-    $('span', el).textContent = (h ? h + ':' + pad(mm) : pad(mm)) + ':' + pad(ss);
+    $('span', el).textContent = fmtLeft(left);
     el.classList.toggle('warn', left < 300000 && left >= 60000);
     el.classList.toggle('danger', left < 60000);
+    el.classList.toggle('paused', A.pm && !A.online);
   }
-  if (left <= 0 && !A.finishing) { clearInterval(A.timer); toast('Waktu habis! Jawaban dikirim otomatis.', 'info'); finishAttempt(true); }
+  if (off) off.textContent = fmtLeft(left);
+  if (left <= 0 && !A.finishing && !A.pendingFinish && (!A.pm || (A.online && !A.stale))) {
+    if (S.path === '/attempt/' + A.d.quiz.id) toast('Waktu habis! Jawaban dikirim otomatis.', 'info');
+    finishAttempt(true);
+  }
 }
-function saveAttempt() {
-  const A = S.att;
-  if (!A || !A.dirty || A.finishing) return;
-  A.dirty = false;
-  api('saveAttempt', { id: A.d.attempt.id, answers: A.ans }, { silent: true }).catch(() => { A.dirty = true; });
-}
+function saveAttempt() { const A = S.att; if (A && A.dirty && !A.finishing) hb(); }
 async function finishAttempt(auto) {
   const A = S.att;
-  if (!A || A.finishing) return;
+  if (!A || A.finishing || A.done) return;
   A.finishing = true;
-  clearInterval(A.timer); clearInterval(A.autosave);
-  setView(`<div class="card glass" style="max-width:420px;margin:60px auto;text-align:center;padding:40px 20px"><span class="spinner" style="width:40px;height:40px;border-width:3px"></span><h3 style="margin:18px 0 4px">Mengirim jawaban…</h3><p class="muted" style="margin:0">Mohon tunggu sebentar.</p></div>`, false);
+  const here = () => S.path === '/attempt/' + A.d.quiz.id;
+  if (here()) setView(`<div class="card glass" style="max-width:420px;margin:60px auto;text-align:center;padding:40px 20px"><span class="spinner" style="width:40px;height:40px;border-width:3px"></span><h3 style="margin:18px 0 4px">Mengirim jawaban…</h3><p class="muted" style="margin:0">Mohon tunggu sebentar.</p></div>`, false);
+  let lastErr = null;
   for (let tries = 0; tries < 3; tries++) {
     try {
-      await mutate('finishAttempt', { id: A.d.attempt.id, answers: A.ans }, { silent: tries < 2 });
-      LS.del('flag_' + A.d.attempt.id);
-      S.onLeave = null; S.justFinished = A.d.attempt.id;
-      go('/review/' + A.d.attempt.id, true);
+      await call('finishAttempt', { id: A.d.attempt.id, answers: A.ans }, 20000);
+      S.cache.clear();
+      const id = A.d.attempt.id, wasHere = here();
+      attStop(false);
+      LS.del('flag_' + id); LS.del('att_' + id);
+      if (wasHere) { S.onLeave = null; S.justFinished = id; go('/review/' + id, true); }
+      else toast('Waktu kuis habis — jawaban Anda sudah dikirim.', 'info');
       return;
-    } catch (e) { if (e.auth) return; await new Promise(r => setTimeout(r, 1500)); }
+    } catch (e) {
+      lastErr = e;
+      if (e.auth) { handleAuthLost(e.message); return; }
+      if (e.net) break;
+      await new Promise(r => setTimeout(r, 1500));
+    }
   }
   A.finishing = false;
-  renderAttempt();
+  if (lastErr && lastErr.net) {           // internet putus: kirim ulang otomatis begitu tersambung
+    A.pendingFinish = true; A.pendingAuto = auto;
+    if (here()) renderAttempt();
+    attOffline(A);
+    return;
+  }
+  if (here()) { toast(lastErr ? lastErr.message : 'Gagal mengirim jawaban.', 'error'); renderAttempt(); }
 }
 async function pageReview(id) {
   setChrome({ title: 'Tinjauan kuis' });
@@ -2958,7 +3115,7 @@ const A = {
   quizStart: async () => {
     const d = S.mod, c = d.module.config || {};
     if (!d.inprogress && c.time_limit) {
-      const ok = await ask({ title: 'Mulai kuis?', message: `Kuis ini memiliki batas waktu ${c.time_limit} menit. Waktu mulai berjalan saat Anda menekan Mulai dan tidak dapat dijeda.`, ok: 'Mulai', icon: 'clock' });
+      const ok = await ask({ title: 'Mulai kuis?', message: d.pauseOffline ? `Kuis ini memiliki batas waktu ${c.time_limit} menit. Waktu mulai berjalan saat Anda menekan Mulai. Jika internet terputus, waktu otomatis berhenti dan Anda bisa melanjutkan dengan soal & sisa waktu yang sama. Menutup halaman atau pindah aplikasi saat online tetap menghabiskan waktu.` : `Kuis ini memiliki batas waktu ${c.time_limit} menit. Waktu mulai berjalan saat Anda menekan Mulai dan tidak dapat dijeda.`, ok: 'Mulai', icon: 'clock' });
       if (!ok) return;
     }
     go('/attempt/' + d.module.id);
@@ -2989,8 +3146,8 @@ const A = {
     reloadModule();
   },
   resExport: () => {
-    const d = S.mod, rows = [['Nama', 'Kelas', 'Mulai', 'Selesai', 'Durasi', 'Poin', 'Nilai (maks ' + d.module.max_grade + ')']];
-    d.attempts.filter(a => a.status === 'finished').forEach(a => rows.push([a.user.name, a.user.kelas || '', fDT(a.started_at), fDT(a.finished_at), dur(a.finished_at - a.started_at), a.score + '/' + a.max_score, String(a.grade).replace('.', ',')]));
+    const d = S.mod, rows = [['Nama', 'Kelas', 'Mulai', 'Selesai', 'Durasi', 'Terputus (kali)', 'Lama terputus', 'Poin', 'Nilai (maks ' + d.module.max_grade + ')']];
+    d.attempts.filter(a => a.status === 'finished').forEach(a => rows.push([a.user.name, a.user.kelas || '', fDT(a.started_at), fDT(a.finished_at), dur(a.time_used || a.finished_at - a.started_at), a.pause_count || 0, a.pause_count ? dur(a.pause_ms) : '', a.score + '/' + a.max_score, String(a.grade).replace('.', ',')]));
     downloadFile('hasil-' + d.module.title.replace(/[^\w]+/g, '-').slice(0, 40) + '.csv', toCSV(rows));
   },
   pick: b => {
@@ -2999,7 +3156,7 @@ const A = {
     if (q.type === 'tf') A_.ans[q.id] = b.dataset.tf === 'true';
     else if (q.type === 'mc') A_.ans[q.id] = +b.dataset.i;
     else { const arr = Array.isArray(A_.ans[q.id]) ? A_.ans[q.id].slice() : [], i = +b.dataset.i, k = arr.indexOf(i); if (k >= 0) arr.splice(k, 1); else arr.push(i); A_.ans[q.id] = arr; }
-    A_.dirty = true;
+    markDirty();
     const card = b.closest('.qcard');
     $$('.opt', card).forEach(o => {
       const on = q.type === 'tf' ? A_.ans[q.id] === (o.dataset.tf === 'true') : q.type === 'mc' ? A_.ans[q.id] === +o.dataset.i : A_.ans[q.id].indexOf(+o.dataset.i) >= 0;
@@ -3008,10 +3165,17 @@ const A = {
     refreshQNav();
   },
   flagQ: b => { const A_ = S.att, id = b.dataset.q; A_.flags[id] = !A_.flags[id]; LS.set('flag_' + A_.d.attempt.id, A_.flags); b.classList.toggle('btn-tinted', A_.flags[id]); b.innerHTML = ic('flag', 'sm') + ' ' + (A_.flags[id] ? 'Ditandai' : 'Tandai'); refreshQNav(); },
-  qGo: b => { const A_ = S.att, k = +b.dataset.k; A_.dir = A_.summary ? 'in-l' : k >= A_.i ? 'in-r' : 'in-l'; A_.i = k; A_.summary = false; saveAttempt(); renderAttempt(); scrollTo({ top: 0, behavior: 'smooth' }); },
-  qNext: () => { const A_ = S.att; A_.dir = 'in-r'; A_.i++; saveAttempt(); renderAttempt(); scrollTo({ top: 0, behavior: 'smooth' }); },
-  qPrev: () => { const A_ = S.att; A_.dir = 'in-l'; A_.i--; renderAttempt(); scrollTo({ top: 0, behavior: 'smooth' }); },
+  qGo: b => { const A_ = S.att, k = +b.dataset.k; A_.dir = A_.summary ? 'in-l' : k >= A_.i ? 'in-r' : 'in-l'; A_.i = k; A_.summary = false; attCache(A_); saveAttempt(); renderAttempt(); scrollTo({ top: 0, behavior: 'smooth' }); },
+  qNext: () => { const A_ = S.att; A_.dir = 'in-r'; A_.i++; attCache(A_); saveAttempt(); renderAttempt(); scrollTo({ top: 0, behavior: 'smooth' }); },
+  qPrev: () => { const A_ = S.att; A_.dir = 'in-l'; A_.i--; attCache(A_); renderAttempt(); scrollTo({ top: 0, behavior: 'smooth' }); },
   attSummary: () => { const A_ = S.att; A_.dir = 'in-r'; A_.summary = true; saveAttempt(); renderAttempt(); scrollTo({ top: 0, behavior: 'smooth' }); },
+  attRetry: () => { const A_ = S.att; if (!A_) return; const st = $('.att-off-st'); if (st) st.innerHTML = '<span class="spinner"></span> Menghubungkan…'; hb(); },
+  attEnd: async b => {
+    if (!(await ask({ title: 'Akhiri percobaan siswa?', message: 'Percobaan dinilai dengan jawaban terakhir yang sudah tersimpan di server. Siswa tidak bisa melanjutkannya lagi.', ok: 'Akhiri & nilai', danger: true }))) return;
+    await mutate('endAttempt', { id: b.dataset.id });
+    toast('Percobaan diakhiri dan dinilai.');
+    reloadModule();
+  },
   attFinish: async () => {
     const A_ = S.att, left = A_.d.questions.filter(q => !isAnswered(q)).length;
     const ok = await ask({ title: 'Kirim jawaban?', message: (left ? left + ' soal belum dijawab. ' : '') + 'Setelah dikirim, jawaban tidak dapat diubah lagi.', ok: 'Kirim & selesai', icon: 'send' });

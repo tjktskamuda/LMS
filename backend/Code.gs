@@ -29,7 +29,7 @@ const CONFIG = {
   MAX_UPLOAD_MB: 10,                // batas ukuran per berkas
   QUIZ_HEARTBEAT_SEC: 30,           // kuis berwaktu: perangkat siswa melapor ke server tiap N detik
   QUIZ_OFFLINE_SEC: 75,             // tanpa laporan lebih dari N detik = dianggap terputus (waktu dijeda)
-  VERSION: '2.5.0'
+  VERSION: '2.5.1'
 };
 
 /* ---------------------------------------------------------------------------
@@ -453,6 +453,7 @@ function createUser_(d, opts) {
   if (pw.length < 4) fail_('Password minimal 4 karakter.');
   const name = str_(d.name).trim();
   if (!name) fail_('Nama lengkap wajib diisi.');
+  if (!opts.skipCheck && nisnOwner_(d.nisn)) fail_('NISN ' + str_(d.nisn).trim() + ' sudah terdaftar pada akun lain.');
   const salt = newSalt_();
   const u = {
     id: uid_('u'), username: username, password_hash: hash_(pw, salt), salt: salt, name: name.slice(0, 100),
@@ -462,6 +463,13 @@ function createUser_(d, opts) {
   };
   if (!opts.noInsert) DB.insert('Users', u);
   return u;
+}
+
+/** Akun pemilik NISN (NISN unik per siswa). */
+function nisnOwner_(nisn, exceptId) {
+  const n = str_(nisn).trim();
+  if (!n) return null;
+  return DB.find('Users', function (u) { return u.id !== exceptId && str_(u.nisn).trim() === n; });
 }
 
 function userCourseRoles_(u) {
@@ -1532,7 +1540,7 @@ function actStartAttempt_(ctx, p) {
     const opts = json_(q.options, []);
     return {
       id: q.id, type: q.type, text: q.text, points: num_(q.points, 1),
-      options: (q.type === 'mc' || q.type === 'multi') ? L.o.map(function (i) { return { i: i, t: opts[i] }; }) : []
+      options: (q.type === 'mc' || q.type === 'multi') ? layoutOpts_(L.o, opts) : []
     };
   }).filter(Boolean);
   return {
@@ -1540,6 +1548,14 @@ function actStartAttempt_(ctx, p) {
     quiz: { id: m.id, title: m.title, course_id: m.course_id, course: a.course.fullname, time_limit: cfg.time_limit || 0, exam: examInfo_(cfg) },
     questions: questions
   };
+}
+
+/** Urutan opsi percobaan, disesuaikan bila guru menghapus/menambah opsi setelah percobaan dimulai. */
+function layoutOpts_(order, opts) {
+  const seen = {}, out = [];
+  (Array.isArray(order) ? order : []).forEach(function (i) { i = Number(i); if (i >= 0 && i < opts.length && !seen[i]) { seen[i] = 1; out.push({ i: i, t: opts[i] }); } });
+  for (let i = 0; i < opts.length; i++) if (!seen[i]) out.push({ i: i, t: opts[i] });
+  return out;
 }
 
 function attemptInfo_(att, m, cfg) {
@@ -1782,7 +1798,7 @@ function actReview_(ctx, p) {
     const o = {
       id: q.id, type: q.type, text: q.text, points: pts, score: round2_(fr * pts), fraction: fr,
       response: answers[q.id] === undefined ? null : answers[q.id],
-      options: (q.type === 'mc' || q.type === 'multi') ? L.o.map(function (i) { return { i: i, t: opts[i] }; }) : []
+      options: (q.type === 'mc' || q.type === 'multi') ? layoutOpts_(L.o, opts) : []
     };
     if (showAns) o.correct = json_(q.answer, null);
     return o;
@@ -1828,19 +1844,38 @@ function actDiscussion_(ctx, p) {
   const u = ctx.user, root = DB.get('Posts', p.id);
   if (!root || root.parent_id) fail_('Diskusi tidak ditemukan.');
   const a = moduleAccess_(u, root.module_id), users = mapBy_(DB.all('Users'), 'id');
-  const posts = DB.where('Posts', function (x) { return x.discussion_id === root.id; })
+  const raw = DB.where('Posts', function (x) { return x.discussion_id === root.id; });
+  const posts = raw
     .sort(function (x, y) { return num_(x.created_at) - num_(y.created_at); })
     .map(function (x) {
       const au = users[x.user_id];
       return {
         id: x.id, parent_id: x.parent_id, subject: x.subject, message: x.message, created_at: num_(x.created_at),
-        author: au ? briefUser_(au) : { name: '(dihapus)' }, mine: x.user_id === u.id, canDelete: x.user_id === u.id || a.role === 'teacher'
+        author: au ? briefUser_(au) : { name: '(dihapus)' }, mine: x.user_id === u.id,
+        canDelete: a.role === 'teacher' || (x.user_id === u.id && !othersReplied_(raw, x, u.id))
       };
     });
   return {
     module: { id: a.module.id, title: a.module.title }, course: { id: a.course.id, fullname: a.course.fullname },
     discussion: { id: root.id, subject: root.subject }, posts: posts, role: a.role
   };
+}
+
+/** Apakah pesan x (beserta turunannya) sudah dibalas oleh pengguna lain? */
+function postTree_(all, x) {
+  const del = {};
+  del[x.id] = 1;
+  if (!x.parent_id) { all.forEach(function (r) { del[r.id] = 1; }); return del; }
+  let grew = true;
+  while (grew) {
+    grew = false;
+    all.forEach(function (r) { if (!del[r.id] && del[r.parent_id]) { del[r.id] = 1; grew = true; } });
+  }
+  return del;
+}
+function othersReplied_(all, x, uid) {
+  const t = postTree_(all, x);
+  return all.some(function (r) { return t[r.id] && r.id !== x.id && r.user_id !== uid; });
 }
 
 function actForumPost_(ctx, p) {
@@ -1876,17 +1911,12 @@ function actDeletePost_(ctx, p) {
   if (!x) fail_('Pesan tidak ditemukan.');
   const a = moduleAccess_(u, x.module_id);
   if (x.user_id !== u.id && a.role !== 'teacher') fail_('Anda tidak berhak menghapus pesan ini.');
+  if (a.role !== 'teacher' && othersReplied_(DB.where('Posts', function (r) { return r.discussion_id === x.discussion_id; }), x, u.id)) fail_('Pesan yang sudah dibalas orang lain tidak dapat dihapus. Minta guru bila perlu dihapus.');
   if (!x.parent_id) {
     DB.removeWhere('Posts', function (r) { return r.discussion_id === x.id; });
     return { discussionDeleted: true };
   }
-  const all = DB.where('Posts', function (r) { return r.discussion_id === x.discussion_id; }), del = {};
-  del[x.id] = 1;
-  let grew = true;
-  while (grew) {
-    grew = false;
-    all.forEach(function (r) { if (!del[r.id] && del[r.parent_id]) { del[r.id] = 1; grew = true; } });
-  }
+  const del = postTree_(DB.where('Posts', function (r) { return r.discussion_id === x.discussion_id; }), x);
   DB.removeWhere('Posts', function (r) { return del[r.id]; });
   return { discussionDeleted: false };
 }
@@ -2175,6 +2205,7 @@ function actSaveUser_(ctx, p) {
     if (DB.find('Users', function (u) { return u.username === username; })) fail_('Username sudah digunakan.');
     patch.username = username;
   }
+  if (patch.nisn && patch.nisn !== str_(x.nisn).trim()) { const o = nisnOwner_(patch.nisn, x.id); if (o) fail_('NISN ' + patch.nisn + ' sudah dipakai oleh ' + o.name + ' (@' + o.username + ').'); }
   if (x.id === ctx.user.id && patch.role !== 'admin') fail_('Anda tidak dapat menurunkan peran akun Anda sendiri.');
   if (x.id === ctx.user.id && patch.status === 'suspended') fail_('Anda tidak dapat menonaktifkan akun Anda sendiri.');
   if (p.password) {
@@ -2226,8 +2257,8 @@ function normUsername_(v) {
  */
 function importRows_(rows, opt) {
   rows = (Array.isArray(rows) ? rows : []).slice(0, 3000);
-  const byName = {}, enrolled = {}, seen = {};
-  DB.all('Users').forEach(function (u) { byName[u.username] = u; });
+  const byName = {}, byNisn = {}, enrolled = {}, seen = {};
+  DB.all('Users').forEach(function (u) { byName[u.username] = u; const n = str_(u.nisn).trim(); if (n && !byNisn[n]) byNisn[n] = u; });
   if (opt.courseId) DB.all('Enrolments').forEach(function (e) { if (e.course_id === opt.courseId) enrolled[e.user_id] = 1; });
   const created = [], toEnrol = [], skipped = [];
   let already = 0, existingCount = 0;
@@ -2235,13 +2266,16 @@ function importRows_(rows, opt) {
     const line = num_(r._row, i + 2);
     const uname = normUsername_(r.username || r.nisn);
     if (!uname) { skipped.push({ row: line, username: '', reason: 'Username dan NISN kosong' }); return; }
-    if (seen[uname]) { skipped.push({ row: line, username: uname, reason: 'Username ganda di dalam berkas' }); return; }
-    seen[uname] = 1;
-    let u = byName[uname];
+    const nisn = str_(r.nisn).trim();
+    // siswa yang sudah punya akun dikenali dari username ATAU NISN-nya (mis. akun "siswa1" dengan NISN yang sama)
+    let u = byName[uname] || (nisn && byNisn[nisn]) || null;
+    const key = u ? 'id:' + u.id : uname;
+    if (seen[key] || (nisn && seen['nisn:' + nisn])) { skipped.push({ row: line, username: u ? u.username : uname, reason: 'Siswa ganda di dalam berkas (username/NISN sama)' }); return; }
+    seen[key] = 1; if (nisn) seen['nisn:' + nisn] = 1;
     if (u) {
       existingCount++;
-      if (!opt.courseId) { skipped.push({ row: line, username: uname, reason: 'Username sudah ada' }); return; }
-      if (u.role !== 'student') { skipped.push({ row: line, username: uname, reason: 'Akun sudah ada dan bukan akun siswa' }); return; }
+      if (!opt.courseId) { skipped.push({ row: line, username: u.username, reason: u.username === uname ? 'Username sudah ada' : 'NISN sudah terdaftar atas akun @' + u.username }); return; }
+      if (u.role !== 'student') { skipped.push({ row: line, username: u.username, reason: 'Akun sudah ada dan bukan akun siswa' }); return; }
     } else {
       if (!opt.allowCreate) { skipped.push({ row: line, username: uname, reason: 'Akun belum ada — minta admin membuatnya' }); return; }
       const pw = str_(r.password).trim() || str_(opt.defaultPassword).trim() || str_(r.nisn).trim();
@@ -2255,6 +2289,7 @@ function importRows_(rows, opt) {
       } catch (e) { skipped.push({ row: line, username: uname, reason: e.message }); return; }
       u.id = u.id + i;
       byName[uname] = u;
+      if (nisn) byNisn[nisn] = u;
       created.push(u);
     }
     if (opt.courseId && u.role === 'student') {

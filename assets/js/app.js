@@ -6,8 +6,8 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.5.0';
-const MIN_API = '2.5.0';
+const APP_VERSION = '2.5.1';
+const MIN_API = '2.5.1';
 const TAB_ID = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);   // identitas tab ini (mode ujian: satu perangkat/tab)   // versi Code.gs yang dibutuhkan semua fitur tampilan ini
 const markReady = () => { window.__LMS_READY = true; };
 
@@ -81,7 +81,12 @@ function dayLabel(t) {
   return fLong(t);
 }
 const toInput = t => { if (!t) return ''; const d = new Date(t); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
-const fromInput = s => { if (!s) return 0; const t = new Date(s).getTime(); return isNaN(t) ? 0 : t; };
+const fromInput = s => {   // dibaca sebagai waktu lokal di semua browser (Safari lama menganggap tanpa zona = UTC)
+  if (!s) return 0;
+  const m = String(s).match(/^(\d{4})-(\d\d)-(\d\d)[T ](\d\d):(\d\d)/);
+  const t = m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]).getTime() : new Date(s).getTime();
+  return isNaN(t) ? 0 : t;
+};
 const toDateInput = t => t ? toInput(t).slice(0, 10) : '';
 const fromDateInput = s => { if (!s) return 0; const p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]).getTime(); };
 const fSize = b => { b = +b || 0; if (b < 1024) return b + ' B'; if (b < 1048576) return Math.round(b / 1024) + ' KB'; return (b / 1048576).toFixed(1) + ' MB'; };
@@ -1222,7 +1227,7 @@ function renderDashboard(d, anim) {
 function serverOldHTML() {
   const v = S.settings && S.settings.version;
   if (DEMO || !v || !verLess(v, MIN_API)) return '';
-  return `<section class="server-old glass"><span class="so-ic">${ic('alert')}</span><div class="grow"><b>Code.gs di server masih v${esc(v)} — perlu diperbarui ke v${MIN_API}</b><p>Sebelum diperbarui, fitur terbaru belum aktif: kuis tidak bisa dilanjutkan setelah mati listrik/internet putus, dan jumlah soal acak per siswa belum berlaku. Salin Code.gs terbaru dari halaman Pasang, tempel di Apps Script, lalu Terapkan → Kelola deployment → Versi baru.</p></div><a class="btn btn-tinted btn-sm" href="setup.html" target="_blank" rel="noopener">${ic('link', 'sm')} Buka halaman Pasang</a></section>`;
+  return `<section class="server-old glass"><span class="so-ic">${ic('alert')}</span><div class="grow"><b>Code.gs di server masih v${esc(v)} — perlu diperbarui ke v${MIN_API}</b><p>Sebelum diperbarui, fitur & perbaikan terbaru belum aktif di server (mode ujian anti-curang, kuis lanjut setelah mati listrik/internet putus, impor siswa dikenali dari NISN, perlindungan pesan diskusi). Salin Code.gs terbaru dari halaman Pasang, tempel di Apps Script, lalu Terapkan → Kelola deployment → Versi baru.</p></div><a class="btn btn-tinted btn-sm" href="setup.html" target="_blank" rel="noopener">${ic('link', 'sm')} Buka halaman Pasang</a></section>`;
 }
 function openQuizHTML(list) {
   if (!list || !list.length) return '';

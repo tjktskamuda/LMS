@@ -6,8 +6,9 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.4.0';
-const MIN_API = '2.4.0';   // versi Code.gs yang dibutuhkan semua fitur tampilan ini
+const APP_VERSION = '2.5.0';
+const MIN_API = '2.5.0';
+const TAB_ID = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);   // identitas tab ini (mode ujian: satu perangkat/tab)   // versi Code.gs yang dibutuhkan semua fitur tampilan ini
 const markReady = () => { window.__LMS_READY = true; };
 
 /* ---------------------------------------------------------------- state */
@@ -155,6 +156,7 @@ const ICONS = {
   shuffle: '<path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/><path d="m18 14 4 4-4 4"/>',
   wifioff: '<path d="M12 20h.01"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/><path d="M5 12.86a10 10 0 0 1 5.17-2.69"/><path d="M19 12.86a10 10 0 0 0-2.01-1.52"/><path d="M2 8.82a15 15 0 0 1 4.18-2.65"/><path d="M22 8.82a15 15 0 0 0-11.29-3.76"/><path d="m2 2 20 20"/>',
   pause: '<rect x="6" y="4.5" width="4" height="15" rx="1.2"/><rect x="14" y="4.5" width="4" height="15" rx="1.2"/>',
+  max: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
 };
 const ic = (n, c) => '<svg class="ic ' + (c || '') + '" aria-hidden="true"><use href="#i-' + n + '"/></svg>';
 function buildSprite() {
@@ -168,12 +170,15 @@ function buildSprite() {
 const TYPES = {
   assign: { name: 'Tugas', icon: 'assign', p: 'assessment', group: 'act', desc: 'Siswa mengirim jawaban teks atau berkas untuk dinilai guru.' },
   quiz: { name: 'Kuis', icon: 'quiz', p: 'quiz', group: 'act', desc: 'Pilihan ganda, benar/salah, dan isian yang dinilai otomatis.' },
+  exam: { name: 'Ujian', icon: 'shield', p: 'exam', group: 'act', desc: 'Kuis dengan mode anti-curang: layar penuh, deteksi keluar aplikasi, kunci otomatis, token.' },
   forum: { name: 'Forum', icon: 'forum', p: 'communication', group: 'act', desc: 'Ruang diskusi tanya-jawab antara guru dan siswa.' },
   page: { name: 'Halaman', icon: 'doc', p: 'content', group: 'res', desc: 'Materi berupa teks, gambar, dan video yang ditulis langsung.' },
   file: { name: 'Berkas', icon: 'clip', p: 'content', group: 'res', desc: 'Unggah PDF, PowerPoint, Word, gambar, atau berkas lain.' },
   url: { name: 'Tautan URL', icon: 'link', p: 'content', group: 'res', desc: 'Tautan ke situs web, video YouTube, atau Google Drive.' },
   label: { name: 'Teks & Media', icon: 'type', p: 'interface', group: 'res', desc: 'Teks atau media yang tampil langsung di halaman mata pelajaran.' }
 };
+/** Jenis tampilan aktivitas: kuis dengan mode ujian ditampilkan sebagai "Ujian". */
+function tOf(x) { return x && x.type === 'quiz' && (x.exam || (x.config && x.config.exam)) ? TYPES.exam : TYPES[x && x.type] || TYPES.page; }
 const QTYPES = [['mc', 'Pilihan Ganda'], ['multi', 'PG Kompleks'], ['tf', 'Benar/Salah'], ['short', 'Isian Singkat']];
 const QTL = { mc: 'Pilihan ganda', multi: 'PG kompleks', tf: 'Benar/Salah', short: 'Isian singkat' };
 const GM = { highest: 'Nilai tertinggi', average: 'Rata-rata', first: 'Percobaan pertama', last: 'Percobaan terakhir' };
@@ -280,6 +285,8 @@ function postJSON(url, body, ms) {
     if (r && r.ok) return r.data;
     const err = new Error((r && r.error) || 'Terjadi kesalahan.');
     if (/^AUTH:/.test(err.message)) { err.auth = true; err.message = err.message.replace(/^AUTH:\s*/, ''); }
+    const ex = /^EXAM:([\w-]+):\s*/.exec(err.message);
+    if (ex) { err.examLock = ex[1]; err.message = err.message.slice(ex[0].length); }
     throw err;
   }).finally(() => clearTimeout(timer));
 }
@@ -291,6 +298,7 @@ async function api(action, payload, opt) {
   try { return await call(action, payload); }
   catch (e) {
     if (e.auth) { e.shown = true; handleAuthLost(e.message); }
+    else if (e.examLock) { e.shown = true; toast(e.message, 'error'); if (!(S.att && !S.att.done)) resumeQuiz(e.examLock); }
     else if (!(opt && opt.silent)) { toast(e.message, 'error'); e.shown = true; }
     throw e;
   }
@@ -1015,6 +1023,7 @@ async function logout() {
   attStop(true);
   try { await call('logout'); } catch (e) { /* abaikan */ }
   S.user = { id: 0 };
+  try { history.replaceState(null, '', location.pathname + location.search + '#/dashboard'); } catch (e) { /* abaikan */ }   // pengguna berikutnya mulai dari dasbor
   handleAuthLost(null);
   toast('Anda telah keluar.');
 }
@@ -1139,7 +1148,16 @@ async function route() {
   let path = S.forcePath || (location.hash || '').replace(/^#/, '') || '/dashboard';
   S.forcePath = null;
   try { path = decodeURI(path); } catch (e) { /* biarkan */ }
+  const XA = S.att;
+  if (XA && !XA.done && XA.g && XA.g.on && !XA.finishing && XA.d.attempt.preview && path !== '/attempt/' + XA.d.quiz.id) { attStop(false); fsExit(); }   // pratinjau guru boleh keluar
+  else if (XA && !XA.done && XA.g && XA.g.on && !XA.finishing && path !== '/attempt/' + XA.d.quiz.id) {   // mode ujian: halaman lain dikunci
+    try { history.replaceState(null, '', '#/attempt/' + XA.d.quiz.id); } catch (e) { /* abaikan */ }
+    examViolate('leave');
+    toast('Selesaikan ujian terlebih dahulu. Halaman lain dikunci selama ujian.', 'error');
+    return;
+  }
   if (S.onLeave) { const f = S.onLeave; S.onLeave = null; try { f(); } catch (e) { /* abaikan */ } }
+  if (!(S.att && S.att.g && S.att.g.on) && !/^\/attempt\//.test(path)) document.documentElement.classList.remove('exam-on');
   closeAllOverlays();
   S.path = path;
   updateNav(path, true);
@@ -1210,7 +1228,7 @@ function openQuizHTML(list) {
   if (!list || !list.length) return '';
   return `<section class="resume-card glass" role="region" aria-label="Kuis belum selesai">
     <div class="rc-head"><span class="rc-ic">${ic('pause')}</span><div><h3>Kuis belum selesai</h3><p>Soal, jawaban, dan sisa waktu Anda masih tersimpan — misalnya setelah PC mati listrik atau internet putus. Lanjutkan dari terakhir kali.</p></div></div>
-    <div class="rc-list">${list.map(q => `<div class="rc-item"><span class="aicon sm" data-p="${TYPES.quiz.p}">${ic(TYPES.quiz.icon)}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(q.title)}</div><div class="ls ellipsis">${esc(q.course)} · ${q.answered}/${q.total} dijawab${q.remaining != null ? ` · sisa waktu <b>${fmtLeft(q.remaining)}</b>` : ''}</div></div><button class="btn btn-primary btn-sm" data-act="resumeQuiz" data-id="${q.id}">${ic('play', 'sm')} Lanjutkan</button></div>`).join('')}</div></section>`;
+    <div class="rc-list">${list.map(q => `<div class="rc-item"><span class="aicon sm" data-p="${tOf({ type: 'quiz', exam: q.exam }).p}">${ic(tOf({ type: 'quiz', exam: q.exam }).icon)}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(q.title)}</div><div class="ls ellipsis">${esc(q.course)} · ${q.answered}/${q.total} dijawab${q.remaining != null ? ` · sisa waktu <b>${fmtLeft(q.remaining)}</b>` : ''}</div></div><button class="btn btn-primary btn-sm" data-act="resumeQuiz" data-id="${q.id}">${ic('play', 'sm')} Lanjutkan</button></div>`).join('')}</div></section>`;
 }
 function timelineHTML(items) {
   const now = Date.now(), f = S.tl;
@@ -1220,7 +1238,7 @@ function timelineHTML(items) {
   list.forEach(t => {
     const k = t.overdue ? 'over' : dayKey(t.due);
     if (k !== last) { out += `<div class="tl-day">${t.overdue ? 'Terlambat' : dayLabel(t.due)}</div>`; last = k; }
-    const T = TYPES[t.type];
+    const T = tOf(t);
     let right = '';
     if (t.role === 'student') {
       const left = t.due - now;
@@ -1430,7 +1448,7 @@ function renderCourseContent(d, anim) {
   if (!box) return;
   const isT = d.role === 'teacher', edit = isT && S.editMode, col = LS.get(colKey(), {});
   const nMods = d.sections.reduce((s, x) => s + x.modules.filter(m => m.type !== 'label').length, 0);
-  const index = `<aside class="cindex glass"><h5>Indeks mapel</h5>${d.sections.map(s => `<div class="ci-sec" data-act="ciGo" data-t="sec-${s.id}">${ic('down', 'xs')}<span class="ellipsis">${esc(s.title)}</span></div>${s.modules.filter(m => m.type !== 'label').map(m => `<div class="ci-mod" data-act="ciGo" data-t="mod-${m.id}">${isT ? `<span class="tdot" data-p="${TYPES[m.type].p}"></span>` : `<span class="cdot ${m.done ? 'on' : ''}">${m.done ? ic('check') : ''}</span>`}<span class="ellipsis">${esc(m.title)}</span></div>`).join('')}`).join('')}</aside>`;
+  const index = `<aside class="cindex glass"><h5>Indeks mapel</h5>${d.sections.map(s => `<div class="ci-sec" data-act="ciGo" data-t="sec-${s.id}">${ic('down', 'xs')}<span class="ellipsis">${esc(s.title)}</span></div>${s.modules.filter(m => m.type !== 'label').map(m => `<div class="ci-mod" data-act="ciGo" data-t="mod-${m.id}">${isT ? `<span class="tdot" data-p="${tOf(m).p}"></span>` : `<span class="cdot ${m.done ? 'on' : ''}">${m.done ? ic('check') : ''}</span>`}<span class="ellipsis">${esc(m.title)}</span></div>`).join('')}`).join('')}</aside>`;
   box.innerHTML = `<div class="course-layout">${index}<div>
     ${d.announcements && d.announcements[0] && Date.now() - d.announcements[0].created_at < 7 * 864e5 ? `<div class="card glass li click" data-act="openAnn" data-id="${d.announcements[0].id}" style="margin-bottom:16px;padding:14px 16px"><span class="aicon sm" data-p="interface">${ic('megaphone')}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(d.announcements[0].title)}</div><div class="ls">Pengumuman terbaru · ${rel(d.announcements[0].created_at)}</div></div>${ic('right', 'sm chev')}</div>` : ''}
     <div class="row between" style="margin:0 6px 12px"><span class="faint" style="font-size:13.5px">${d.sections.length} topik · ${nMods} aktivitas</span><div class="row" style="gap:4px"><button class="btn btn-plain btn-sm" data-act="mIndex">${ic('list', 'sm')} Indeks</button><button class="btn btn-plain btn-sm" data-act="collapseAll">${Object.keys(col).some(k => col[k]) ? 'Bentangkan semua' : 'Ciutkan semua'}</button></div></div>
@@ -1488,7 +1506,7 @@ function modStatus(m, d) {
 function modRow(m, d, edit) {
   const tools = edit ? `<div class="edit-tools"><button class="btn" data-act="modEye" data-id="${m.id}" title="${m.visible ? 'Sembunyikan' : 'Tampilkan'}">${ic(m.visible ? 'eye' : 'eyeoff', 'sm')}</button><button class="btn" data-act="modMenu" data-id="${m.id}" aria-label="Opsi">${ic('more')}</button></div>` : '';
   if (m.type === 'label') return `<div class="mod-label ${!m.visible ? 'dim' : ''}" id="mod-${m.id}">${edit ? `<div class="lbl-tools">${tools}</div>` : ''}<div class="rich" ${edit ? 'style="padding-right:80px"' : ''}>${sanitize(m.intro) || '<span class="faint">(Teks kosong)</span>'}</div></div>`;
-  const T = TYPES[m.type] || TYPES.page;
+  const T = tOf(m);
   return `<div class="mod ${!m.visible ? 'dim' : ''}" data-go="/mod/${m.id}" id="mod-${m.id}">
     <span class="aicon" data-p="${T.p}">${ic(T.icon)}</span>
     <div class="mod-main"><div class="mt">${T.name}${!m.visible ? ' · Tersembunyi' : ''}</div><div class="mn">${esc(m.title)}</div>${m.open_date || m.due_date ? `<div class="md">${modDates(m)}</div>` : ''}</div>
@@ -1536,12 +1554,15 @@ function openChooser(secId) {
   });
 }
 function openModuleForm(type, o) {
-  const m = o.module || null, T = TYPES[type], cfg = (m && m.config) || {};
+  const m = o.module || null, cfg = (m && m.config) || {};
+  const asExam = type === 'exam' || (type === 'quiz' && !!cfg.exam);
+  if (type === 'exam') type = 'quiz';
+  const T = asExam ? TYPES.exam : TYPES[type];
   const secOpts = (o.sections || []).map(s => [s.id, s.title]);
   const secVal = m ? m.section_id : o.section_id;
   const dates = (openLbl, dueLbl) => `<div class="row2">${fInput('open_date', openLbl, toInput(m && m.open_date), { type: 'datetime-local' })}${fInput('due_date', dueLbl, toInput(m && m.due_date), { type: 'datetime-local' })}</div>`;
   let body = `<div class="row" style="margin-bottom:16px"><span class="aicon lg" data-p="${T.p}">${ic(T.icon)}</span><div><b style="font-size:17px">${T.name}</b><div class="muted" style="font-size:13.5px">${T.desc}</div></div></div><div class="form">`;
-  if (type !== 'label') body += fInput('title', 'Judul', m ? m.title : '', { req: true, ph: type === 'assign' ? 'mis. Tugas 1: Membuat flowchart' : type === 'quiz' ? 'mis. Kuis Bab 1' : 'Judul ' + T.name.toLowerCase() });
+  if (type !== 'label') body += fInput('title', 'Judul', m ? m.title : '', { req: true, ph: type === 'assign' ? 'mis. Tugas 1: Membuat flowchart' : asExam ? 'mis. Ujian Tengah Semester KKA' : type === 'quiz' ? 'mis. Kuis Bab 1' : 'Judul ' + T.name.toLowerCase() });
   if (type === 'page') body += `<div class="field"><label class="lbl">Deskripsi singkat</label><input class="input" name="introPlain" value="${esc(plain(m && m.intro))}" placeholder="Opsional — tampil di bagian atas halaman"></div><div class="field"><label class="lbl">Isi halaman <span class="req">*</span></label>${editor('body', cfg.body, { h: 260, ph: 'Tulis materi, sisipkan gambar atau video YouTube…' })}</div>`;
   else if (type === 'label') body += `<div class="field"><label class="lbl">Isi teks & media <span class="req">*</span></label>${editor('intro', m && m.intro, { h: 160 })}</div>`;
   else body += `<div class="field"><label class="lbl">${type === 'assign' ? 'Instruksi tugas' : 'Deskripsi'}</label>${editor('intro', m && m.intro, { h: 130 })}</div>`;
@@ -1553,9 +1574,10 @@ function openModuleForm(type, o) {
       <div class="opt-stack">${fSwitch('t_text', 'Teks daring', 'Siswa mengetik jawaban langsung.', types.indexOf('text') >= 0)}${fSwitch('t_file', 'Unggah berkas', 'Siswa mengunggah dokumen/gambar.', types.indexOf('file') >= 0)}${fSwitch('allow_late', 'Terima kiriman terlambat', 'Kiriman setelah batas waktu ditandai terlambat.', cfg.allow_late !== false)}</div>`;
   }
   if (type === 'quiz') {
-    body += dates('Dibuka', 'Ditutup') + `<div class="row3">${fInput('time_limit', 'Batas waktu (menit)', m ? cfg.time_limit || 0 : 30, { type: 'number', attrs: 'min="0" max="600"', hint: '0 = tanpa batas' })}${fInput('attempts', 'Kesempatan', m ? cfg.attempts || 0 : 1, { type: 'number', attrs: 'min="0" max="50"', hint: '0 = tak terbatas' })}${fInput('max_grade', 'Nilai maksimal', m ? m.max_grade : 100, { type: 'number', attrs: 'min="1" max="1000"' })}</div>
+    body += dates('Dibuka', 'Ditutup') + `<div class="row3">${fInput('time_limit', 'Batas waktu (menit)', m ? cfg.time_limit || 0 : asExam ? 90 : 30, { type: 'number', attrs: 'min="0" max="600"', hint: '0 = tanpa batas' })}${fInput('attempts', 'Kesempatan', m ? cfg.attempts || 0 : 1, { type: 'number', attrs: 'min="0" max="50"', hint: '0 = tak terbatas' })}${fInput('max_grade', 'Nilai maksimal', m ? m.max_grade : 100, { type: 'number', attrs: 'min="1" max="1000"' })}</div>
       <div class="row2">${fSelect('grade_method', 'Metode penilaian', Object.keys(GM).map(k => [k, GM[k]]), cfg.grade_method || 'highest')}${fInput('pick', 'Jumlah soal yang tampil', m ? cfg.pick || 0 : 0, { type: 'number', attrs: 'min="0" max="500"', hint: '0 = semua soal. Isi mis. 25 → tiap siswa mendapat 25 soal acak dari bank soal.' })}</div>
-      <div class="opt-stack">${fSwitch('shuffle', 'Acak urutan soal', 'Setiap siswa mendapat urutan soal berbeda.', !!cfg.shuffle)}${fSwitch('shuffle_options', 'Acak urutan opsi jawaban', 'Untuk soal pilihan ganda.', m ? !!cfg.shuffle_options : true)}${fSwitch('review', 'Tampilkan kunci jawaban', 'Siswa dapat melihat jawaban benar setelah selesai.', cfg.review !== false)}${fSwitch('pause_offline', 'Jeda waktu saat internet terputus', 'Untuk kuis berbatas waktu: sisa waktu tidak berkurang selama koneksi siswa putus, lalu siswa melanjutkan dengan soal yang sama.', cfg.pause_offline !== false)}</div>`;
+      <div class="opt-stack">${fSwitch('shuffle', 'Acak urutan soal', 'Setiap siswa mendapat urutan soal berbeda.', m ? !!cfg.shuffle : asExam)}${fSwitch('shuffle_options', 'Acak urutan opsi jawaban', 'Untuk soal pilihan ganda.', m ? !!cfg.shuffle_options : true)}${fSwitch('review', 'Tampilkan kunci jawaban', 'Siswa dapat melihat jawaban benar setelah selesai.', m ? cfg.review !== false : !asExam)}${fSwitch('pause_offline', 'Jeda waktu saat internet terputus', 'Untuk kuis berbatas waktu: sisa waktu tidak berkurang selama koneksi siswa putus, lalu siswa melanjutkan dengan soal yang sama.', cfg.pause_offline !== false)}</div>
+      ${asExam ? examFormHTML(cfg) : ''}`;
   }
   if (type === 'forum') body += fSwitch('teacher_only', 'Hanya guru yang dapat memulai diskusi', 'Cocok untuk forum pengumuman. Siswa tetap dapat membalas.', !!cfg.teacher_only);
   body += `<div class="row2">${fSelect('section_id', 'Topik', secOpts, secVal)}<div class="field"><label class="lbl">Visibilitas</label>${fSwitch('visible', 'Tampilkan untuk siswa', '', m ? m.visible : true)}</div></div></div>`;
@@ -1573,8 +1595,8 @@ function openModuleForm(type, o) {
       if (type === 'quiz') {
         const pick = Math.floor(+fv(r, 'pick') || 0);
         if (pick < 0 || pick > 500) throw new Error('Jumlah soal yang tampil harus 0–500.');
-        p.config = { time_limit: +fv(r, 'time_limit') || 0, attempts: +fv(r, 'attempts') || 0, grade_method: fv(r, 'grade_method'), shuffle: fv(r, 'shuffle'), shuffle_options: fv(r, 'shuffle_options'), review: fv(r, 'review'), pick, pause_offline: fv(r, 'pause_offline') };
-        if (verLess(S.settings && S.settings.version, '2.2.0')) setTimeout(() => toast('Pengaturan kuis terbaru butuh Code.gs v2.2.0. Perbarui Code.gs di Apps Script lalu buat versi deployment baru.', 'error'), 600);
+        p.config = Object.assign({ time_limit: +fv(r, 'time_limit') || 0, attempts: +fv(r, 'attempts') || 0, grade_method: fv(r, 'grade_method'), shuffle: fv(r, 'shuffle'), shuffle_options: fv(r, 'shuffle_options'), review: fv(r, 'review'), pick, pause_offline: fv(r, 'pause_offline') }, examFormVal(r, asExam));
+        if (verLess(S.settings && S.settings.version, MIN_API)) setTimeout(() => toast('Pengaturan kuis/ujian terbaru butuh Code.gs v' + MIN_API + '. Perbarui Code.gs di Apps Script lalu buat versi deployment baru.', 'error'), 600);
       }
       if (type === 'forum') p.config = { teacher_only: fv(r, 'teacher_only') };
       if (type === 'file') {
@@ -1583,10 +1605,25 @@ function openModuleForm(type, o) {
         else if (!m) throw new Error('Pilih berkas untuk diunggah.');
       }
       const res = await mutate('saveModule', p);
-      toast(m ? 'Perubahan disimpan' : T.name + ' ditambahkan');
+      toast(m ? 'Perubahan disimpan' : (p.config && p.config.exam ? TYPES.exam.name : T.name) + ' ditambahkan');
       if (o.after) await o.after(res);
     }
   });
+}
+function examFormHTML(cfg) {
+  const tok = cfg.exam_token || '';
+  return `<div class="exam-form"><div class="ef-h">${ic('shield')}<div><b>Anti-curang selalu aktif</b><div class="muted" style="font-size:13px">Berlaku di Android, iPhone/iPad, Mac, dan Windows: deteksi keluar aplikasi/tab/jendela, layar terbagi, salin-tempel, cetak, dan pintasan DevTools. Pelanggaran dilaporkan ke guru.</div></div></div>
+    <div id="examOpts">
+      <div class="row3">${fInput('exam_token', 'Token ujian', tok, { ph: 'mis. KKA25', hint: 'Opsional. Siswa wajib memasukkan token untuk mulai.', attrs: 'maxlength="20" autocomplete="off" style="text-transform:uppercase"' })}${fInput('exam_max', 'Batas pelanggaran', cfg.exam_max || 3, { type: 'number', attrs: 'min="1" max="50"' })}${fSelect('exam_action', 'Jika batas tercapai', [['lock', 'Kunci (guru membuka)'], ['submit', 'Kirim otomatis'], ['log', 'Catat saja']], cfg.exam_action || 'lock')}</div>
+      <div class="row" style="gap:8px;margin:-4px 0 12px"><button type="button" class="btn btn-glass btn-sm" data-act="examTokGen">${ic('refresh', 'sm')} Buat token acak</button></div>
+      <div class="opt-stack">${fSwitch('exam_fullscreen', 'Wajib layar penuh', 'Keluar dari layar penuh dihitung pelanggaran. iPhone tidak mendukung layar penuh untuk situs web — tetap diawasi dengan cara lain.', cfg.exam_fullscreen !== false)}${fSwitch('exam_copy', 'Blokir salin, tempel, klik kanan & cetak', '', cfg.exam_copy !== false)}${fSwitch('exam_watermark', 'Watermark nama siswa di layar', 'Mencegah foto/tangkapan layar disebarkan tanpa jejak.', cfg.exam_watermark !== false)}${fSwitch('exam_single', 'Hanya satu perangkat/tab', 'Jika ujian dibuka di tempat lain, tempat lama berhenti dan perpindahan dicatat.', cfg.exam_single !== false)}${fSwitch('exam_lockpages', 'Kunci halaman lain LMS selama ujian', 'Siswa tidak bisa membuka materi/forum sampai ujian selesai, termasuk dari perangkat lain.', cfg.exam_lockpages !== false)}</div>
+    </div></div>`;
+}
+function examFormVal(r, on) {
+  if (!on) return { exam: false };
+  const max = Math.floor(+fv(r, 'exam_max') || 3);
+  if (max < 1 || max > 50) throw new Error('Batas pelanggaran harus 1–50.');
+  return { exam: true, exam_token: String(fv(r, 'exam_token') || '').replace(/\s+/g, '').toUpperCase(), exam_max: max, exam_action: fv(r, 'exam_action'), exam_fullscreen: fv(r, 'exam_fullscreen'), exam_copy: fv(r, 'exam_copy'), exam_watermark: fv(r, 'exam_watermark'), exam_single: fv(r, 'exam_single'), exam_lockpages: fv(r, 'exam_lockpages') };
 }
 async function editModule(id, after) {
   try {
@@ -1599,7 +1636,7 @@ async function editModule(id, after) {
 function openIndexSheet() {
   const d = S.course;
   sheet({
-    title: 'Indeks mapel', cancel: 'Tutup', body: `<div class="list">${d.sections.map(s => `<div class="tl-day">${esc(s.title)}</div>${s.modules.filter(m => m.type !== 'label').map(m => `<div class="li click" data-jump="mod-${m.id}"><span class="aicon sm" data-p="${TYPES[m.type].p}">${ic(TYPES[m.type].icon)}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(m.title)}</div></div>${d.role !== 'teacher' && m.done ? `<span class="chip green">${ic('check')}</span>` : ''}</div>`).join('') || '<div class="faint" style="padding:4px 12px">—</div>'}`).join('')}</div>`,
+    title: 'Indeks mapel', cancel: 'Tutup', body: `<div class="list">${d.sections.map(s => `<div class="tl-day">${esc(s.title)}</div>${s.modules.filter(m => m.type !== 'label').map(m => `<div class="li click" data-jump="mod-${m.id}"><span class="aicon sm" data-p="${tOf(m).p}">${ic(tOf(m).icon)}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(m.title)}</div></div>${d.role !== 'teacher' && m.done ? `<span class="chip green">${ic('check')}</span>` : ''}</div>`).join('') || '<div class="faint" style="padding:4px 12px">—</div>'}`).join('')}</div>`,
     onMount: s => s.body.addEventListener('click', e => { const b = e.target.closest('[data-jump]'); if (!b) return; s.close(); setTimeout(() => jumpTo(b.dataset.jump), 300); })
   });
 }
@@ -1679,7 +1716,7 @@ async function loadGradebook(d) {
   S.gb = g;
   const pctOf = (v, max) => v === null || v === undefined ? null : v / max * 100;
   box.innerHTML = `<section class="card glass"><div class="card-h"><h3>${ic('table')} Buku nilai</h3><div class="row"><span class="faint" style="font-size:13px">${g.students.length} siswa · ${g.items.length} item penilaian</span><button class="btn btn-tinted btn-sm" data-act="gbExport">${ic('download', 'sm')} Ekspor CSV</button></div></div>
-    ${g.items.length && g.students.length ? `<div class="tbl-wrap"><table class="tbl gb"><thead><tr><th class="sticky">Siswa</th>${g.items.map(it => `<th class="num"><a data-go="/mod/${it.id}" style="cursor:pointer;color:inherit" title="${esc(it.title)}">${ic(TYPES[it.type].icon, 'xs')} ${esc(it.title.length > 22 ? it.title.slice(0, 21) + '…' : it.title)}</a><div style="font-weight:500;text-transform:none;letter-spacing:0">maks ${fNum(it.max_grade)}</div></th>`).join('')}<th class="num">Total</th></tr></thead>
+    ${g.items.length && g.students.length ? `<div class="tbl-wrap"><table class="tbl gb"><thead><tr><th class="sticky">Siswa</th>${g.items.map(it => `<th class="num"><a data-go="/mod/${it.id}" style="cursor:pointer;color:inherit" title="${esc(it.title)}">${ic(tOf(it).icon, 'xs')} ${esc(it.title.length > 22 ? it.title.slice(0, 21) + '…' : it.title)}</a><div style="font-weight:500;text-transform:none;letter-spacing:0">maks ${fNum(it.max_grade)}</div></th>`).join('')}<th class="num">Total</th></tr></thead>
     <tbody>${g.students.map(s => `<tr><td class="sticky"><div class="row" style="gap:8px">${av(s, 'xs')}<div><b style="font-size:13.5px">${esc(s.name)}</b><div class="faint" style="font-size:12px">${esc(s.kelas || '')}</div></div></div></td>${g.items.map(it => { const v = g.grades[s.id][it.id]; return `<td class="num"><span class="gcell ${gClass(pctOf(v, it.max_grade))}">${v === undefined || v === null ? '–' : fNum(v)}</span></td>`; }).join('')}<td class="num"><span class="gcell ${gClass(g.totals[s.id].pct)}">${g.totals[s.id].pct === null ? '–' : fNum(g.totals[s.id].pct) + '%'}</span></td></tr>`).join('')}</tbody></table></div>`
     : emptyHTML('table', g.items.length ? 'Belum ada siswa' : 'Belum ada item penilaian', g.items.length ? 'Daftarkan siswa terlebih dahulu.' : 'Tambahkan Tugas atau Kuis ke mata pelajaran ini.')}</section>`;
 }
@@ -1704,7 +1741,7 @@ function gradeReportHTML(g, withHead) {
   return `<section class="card glass">
     <div class="card-h">${withHead ? `<div class="row" style="cursor:pointer" data-go="/course/${g.course.id}"><span class="cover" style="width:44px;height:44px;border-radius:12px;overflow:hidden;position:relative;display:block">${coverSVG(g.course.id, g.course.cover)}</span><div><h3 style="font-size:16.5px">${esc(g.course.fullname)}</h3><div class="faint" style="font-size:12.5px">${t.graded} dari ${t.items} item sudah dinilai</div></div></div>` : `<h3>${ic('award')} Laporan nilai</h3>`}
     ${ringBox(t.pct || 0, 58, t.pct === null ? '–' : Math.round(t.pct) + '', t.pct === null ? 'var(--text-3)' : t.pct >= 75 ? 'var(--green)' : t.pct >= 55 ? 'var(--orange)' : 'var(--red)', 16)}</div>
-    ${g.items.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item penilaian</th><th class="num">Nilai</th><th class="num">Rentang</th><th class="num">Persentase</th></tr></thead><tbody>${g.items.map(it => { const p = it.grade === null ? null : it.grade / it.max_grade * 100; return `<tr class="click" data-go="/mod/${it.id}"><td><div class="row" style="gap:10px"><span class="aicon sm" data-p="${TYPES[it.type].p}">${ic(TYPES[it.type].icon)}</span><div style="min-width:0"><b style="font-size:14px">${esc(it.title)}</b>${it.feedback ? `<div class="faint ellipsis" style="font-size:12.5px;max-width:360px">💬 ${esc(plain(it.feedback))}</div>` : ''}</div></div></td><td class="num"><span class="gcell ${gClass(p)}">${it.grade === null ? '–' : fNum(it.grade)}</span></td><td class="num faint">0–${fNum(it.max_grade)}</td><td class="num">${p === null ? '–' : fNum(p) + '%'}</td></tr>`; }).join('')}<tr><td><b>Total mapel</b></td><td class="num"><b>${t.graded ? fNum(t.got) : '–'}</b></td><td class="num faint">${t.graded ? '0–' + fNum(t.max) : '–'}</td><td class="num"><b>${t.pct === null ? '–' : fNum(t.pct) + '%'}</b></td></tr></tbody></table></div>` : emptyHTML('chart', 'Belum ada item penilaian', '')}
+    ${g.items.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item penilaian</th><th class="num">Nilai</th><th class="num">Rentang</th><th class="num">Persentase</th></tr></thead><tbody>${g.items.map(it => { const p = it.grade === null ? null : it.grade / it.max_grade * 100; return `<tr class="click" data-go="/mod/${it.id}"><td><div class="row" style="gap:10px"><span class="aicon sm" data-p="${tOf(it).p}">${ic(tOf(it).icon)}</span><div style="min-width:0"><b style="font-size:14px">${esc(it.title)}</b>${it.feedback ? `<div class="faint ellipsis" style="font-size:12.5px;max-width:360px">💬 ${esc(plain(it.feedback))}</div>` : ''}</div></div></td><td class="num"><span class="gcell ${gClass(p)}">${it.grade === null ? '–' : fNum(it.grade)}</span></td><td class="num faint">0–${fNum(it.max_grade)}</td><td class="num">${p === null ? '–' : fNum(p) + '%'}</td></tr>`; }).join('')}<tr><td><b>Total mapel</b></td><td class="num"><b>${t.graded ? fNum(t.got) : '–'}</b></td><td class="num faint">${t.graded ? '0–' + fNum(t.max) : '–'}</td><td class="num"><b>${t.pct === null ? '–' : fNum(t.pct) + '%'}</b></td></tr></tbody></table></div>` : emptyHTML('chart', 'Belum ada item penilaian', '')}
   </section>`;
 }
 
@@ -1762,7 +1799,7 @@ async function reloadModule() {
 }
 function renderModule(d, sub, anim) {
   S.mod = d;
-  const m = d.module, T = TYPES[m.type] || TYPES.page, isT = d.role === 'teacher', cfg = m.config || {};
+  const m = d.module, T = tOf(m), isT = d.role === 'teacher', cfg = m.config || {};
   setChrome({ title: m.title, back: '/course/' + d.course.id });
   const status = [];
   if (!isT && d.done) status.push(`<span class="chip green">${ic('check')} Selesai</span>`);
@@ -1953,7 +1990,10 @@ function quizInfoGroup(d) {
     ${c.time_limit ? `<div class="gi"><span class="k">Jika internet terputus</span><span class="v">${d.pauseOffline ? 'Waktu dijeda — lanjutkan dengan soal & sisa waktu yang sama' : 'Waktu tetap berjalan'}</span></div>` : ''}
     <div class="gi"><span class="k">Kesempatan mengerjakan</span><span class="v">${c.attempts ? c.attempts + ' kali' : 'Tak terbatas'}</span></div>
     <div class="gi"><span class="k">Metode penilaian</span><span class="v">${GM[c.grade_method] || GM.highest}</span></div>
-    <div class="gi"><span class="k">Jumlah soal</span><span class="v">${quizCountText(d)}</span></div></div>`;
+    <div class="gi"><span class="k">Jumlah soal</span><span class="v">${quizCountText(d)}</span></div>
+    ${d.exam ? `<div class="gi"><span class="k">Mode ujian</span><span class="v">${ic('shield', 'sm')} Anti-curang aktif · batas ${d.exam.max} pelanggaran → ${d.exam.action === 'lock' ? 'dikunci' : d.exam.action === 'submit' ? 'dikirim otomatis' : 'dicatat'}</span></div>
+    <div class="gi"><span class="k">Pengawasan</span><span class="v">${[d.exam.fullscreen ? 'layar penuh' : '', 'deteksi keluar aplikasi/tab', d.exam.copy ? 'salin-tempel diblokir' : '', d.exam.single ? 'satu perangkat' : '', d.exam.watermark ? 'watermark' : ''].filter(Boolean).join(' · ')}</span></div>
+    ${d.exam.token ? `<div class="gi"><span class="k">Token ujian</span><span class="v">${d.summary && c.exam_token ? `<b class="tok">${esc(c.exam_token)}</b>` : 'Diperlukan — tanyakan kepada guru/pengawas'}</span></div>` : ''}` : ''}</div>`;
 }
 function quizCountText(d) {
   const shown = d.shownCount || d.questionCount, pts = d.pick ? d.shownPoints : d.totalPoints;
@@ -1972,7 +2012,7 @@ function quizStudentHTML(d) {
   const btn = d.canAttempt ? `<button class="btn btn-primary btn-lg" data-act="quizStart">${ic('play', 'sm')} ${d.inprogress ? 'Lanjutkan percobaan' : fin.length ? 'Kerjakan lagi' : 'Mulai mengerjakan'}</button>` : `<span class="chip" style="height:32px;padding:0 14px">${ic('info')} ${esc(d.reason)}</span>`;
   const resume = d.canAttempt && d.inprogress && d.resume ? `<div class="resume-note">${ic('pause', 'sm')}<span>Percobaan Anda masih tersimpan — sisa waktu <b>${fmtLeft(d.resume.remaining)}</b>, soal tetap sama.</span></div>` : '';
   const pct = d.grade !== null ? d.grade / m.max_grade * 100 : 0;
-  return `<section class="card glass"><div class="card-h"><h3>${ic('quiz')} Informasi kuis</h3></div>${quizInfoGroup(d)}${resume}<div class="row" style="justify-content:center;margin-top:20px">${btn}</div></section>
+  return `<section class="card glass"><div class="card-h"><h3>${ic(d.exam ? 'shield' : 'quiz')} ${d.exam ? 'Informasi ujian' : 'Informasi kuis'}</h3></div>${quizInfoGroup(d)}${resume}<div class="row" style="justify-content:center;margin-top:20px">${btn}</div></section>
     ${d.attempts.length ? `<section class="card glass"><div class="card-h"><h3>${ic('clock')} Ringkasan percobaan</h3>${d.grade !== null ? `<div class="row">${ringBox(pct, 56, fNum(d.grade), pct >= 75 ? 'var(--green)' : pct >= 55 ? 'var(--orange)' : 'var(--red)', 15)}<div><b>Nilai akhir</b><div class="faint" style="font-size:12.5px">dari ${fNum(m.max_grade)}</div></div></div>` : ''}</div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>Status</th><th>Selesai</th><th class="num">Poin</th><th class="num">Nilai</th><th></th></tr></thead><tbody>${d.attempts.map((a, i) => `<tr><td>${i + 1}</td><td>${a.status === 'finished' ? '<span class="chip green">Selesai</span>' : '<span class="chip orange">Sedang dikerjakan</span>'}</td><td>${a.finished_at ? fDT(a.finished_at) : '—'}</td><td class="num">${a.status === 'finished' ? fNum(a.score) + '/' + fNum(a.max_score) : '—'}</td><td class="num">${a.status === 'finished' ? `<span class="gcell ${gClass(a.grade / m.max_grade * 100)}">${fNum(a.grade)}</span>` : '—'}</td><td class="num">${a.status === 'finished' ? `<button class="btn btn-plain btn-sm" data-go="/review/${a.id}">Tinjau</button>` : ''}</td></tr>`).join('')}</tbody></table></div></section>` : ''}`;
 }
@@ -1989,10 +2029,13 @@ async function loadQuizTab(tab) {
   const d = S.mod;
   if (tab === 'info') { box.innerHTML = quizInfoGroup(d); return; }
   if (tab === 'results') {
-    const list = d.attempts.filter(a => a.status === 'finished'), live = d.attempts.filter(a => a.status === 'inprogress');
+    const list = d.attempts.filter(a => a.status === 'finished'), live = d.attempts.filter(a => a.status === 'inprogress'), ex = !!d.exam;
     const who = a => `<div class="row" style="gap:8px">${av(a.user, 'xs')}<div><b style="font-size:13.5px">${esc(a.user.name)}</b><div class="faint" style="font-size:12px">${esc(a.user.kelas || '')}</div></div></div>`;
-    const liveHTML = live.length ? `<div class="live-att"><div class="live-h">${ic('clock', 'sm')} Sedang mengerjakan (${live.length})</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Siswa</th><th>Status</th><th>Sisa waktu</th><th></th></tr></thead><tbody>${live.map(a => `<tr><td>${who(a)}</td><td>${a.offline ? `<span class="chip orange">${ic('wifioff', 'sm')} Terputus · dijeda</span><div class="faint" style="font-size:12px;margin-top:3px">terakhir aktif ${short2(dur(a.idle_ms || 0))} lalu</div>` : '<span class="chip green">Online</span>'}${a.pause_count ? `<div class="faint" style="font-size:12px;margin-top:3px">${pauseText(a)}</div>` : ''}</td><td>${a.remaining != null ? fmtLeft(a.remaining) : '—'}</td><td class="num"><button class="btn btn-plain btn-sm" data-act="attEnd" data-id="${a.id}">Akhiri & nilai</button></td></tr>`).join('')}</tbody></table></div></div>` : '';
-    box.innerHTML = liveHTML + (list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Siswa</th><th>Mulai</th><th>Durasi</th><th class="num">Poin</th><th class="num">Nilai</th><th></th></tr></thead><tbody>${list.map(a => `<tr><td>${who(a)}</td><td>${fDT(a.started_at)}</td><td>${dur(a.time_used || a.finished_at - a.started_at)}${a.pause_count ? `<div class="chip orange" style="margin-top:4px" title="Waktu selama terputus tidak dihitung">${ic('wifioff', 'sm')} ${pauseText(a)}</div>` : ''}</td><td class="num">${fNum(a.score)}/${fNum(a.max_score)}</td><td class="num"><span class="gcell ${gClass(a.grade / d.module.max_grade * 100)}">${fNum(a.grade)}</span></td><td class="num nowrap"><button class="btn btn-plain btn-sm" data-go="/review/${a.id}">Tinjau</button><button class="btn btn-plain btn-icon btn-sm" data-act="attDel" data-id="${a.id}" aria-label="Hapus percobaan" style="color:var(--red)">${ic('trash', 'sm')}</button></td></tr>`).join('')}</tbody></table></div>` : live.length ? '' : emptyHTML('clock', 'Belum ada percobaan', 'Hasil akan muncul setelah siswa menyelesaikan kuis.'));
+    const vio = a => a.violations ? `<button class="chip ${a.locked ? 'red' : 'orange'} click" data-act="attLog" data-id="${a.id}" title="Lihat log pelanggaran">${ic('alert', 'sm')} ${a.violations}${a.locked ? '' : ''}</button>` : '<span class="faint">0</span>';
+    const liveStatus = a => a.locked ? `<span class="chip red">${ic('lock', 'sm')} Terkunci</span>` : a.offline ? `<span class="chip orange">${ic('wifioff', 'sm')} Terputus · dijeda</span><div class="faint" style="font-size:12px;margin-top:3px">terakhir aktif ${short2(dur(a.idle_ms || 0))} lalu</div>` : '<span class="chip green">Online</span>';
+    const liveHTML = live.length ? `<div class="live-att"><div class="live-h">${ic('clock', 'sm')} Sedang mengerjakan (${live.length})${ex ? `<span class="grow"></span><span class="faint live-auto">${ic('refresh', 'sm')} diperbarui otomatis</span>` : ''}</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Siswa</th><th>Status</th>${ex ? '<th>Pelanggaran</th>' : ''}<th>Sisa waktu</th><th></th></tr></thead><tbody>${live.map(a => `<tr class="${a.locked ? 'row-locked' : ''}"><td>${who(a)}</td><td>${liveStatus(a)}${a.pause_count ? `<div class="faint" style="font-size:12px;margin-top:3px">${pauseText(a)}</div>` : ''}</td>${ex ? `<td>${vio(a)}</td>` : ''}<td>${a.remaining != null ? fmtLeft(a.remaining) : '—'}</td><td class="num nowrap">${a.locked ? `<button class="btn btn-primary btn-sm" data-act="attUnlock" data-id="${a.id}">${ic('lock', 'sm')} Buka kunci</button>` : ''}<button class="btn btn-plain btn-sm" data-act="attEnd" data-id="${a.id}">Akhiri & nilai</button></td></tr>`).join('')}</tbody></table></div></div>` : '';
+    box.innerHTML = liveHTML + (list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Siswa</th><th>Mulai</th><th>Durasi</th>${ex ? '<th>Pelanggaran</th>' : ''}<th class="num">Poin</th><th class="num">Nilai</th><th></th></tr></thead><tbody>${list.map(a => `<tr><td>${who(a)}</td><td>${fDT(a.started_at)}</td><td>${dur(a.time_used || a.finished_at - a.started_at)}${a.pause_count ? `<div class="chip orange" style="margin-top:4px" title="Waktu selama terputus tidak dihitung">${ic('wifioff', 'sm')} ${pauseText(a)}</div>` : ''}</td>${ex ? `<td>${vio(a)}</td>` : ''}<td class="num">${fNum(a.score)}/${fNum(a.max_score)}</td><td class="num"><span class="gcell ${gClass(a.grade / d.module.max_grade * 100)}">${fNum(a.grade)}</span></td><td class="num nowrap"><button class="btn btn-plain btn-sm" data-go="/review/${a.id}">Tinjau</button><button class="btn btn-plain btn-icon btn-sm" data-act="attDel" data-id="${a.id}" aria-label="Hapus percobaan" style="color:var(--red)">${ic('trash', 'sm')}</button></td></tr>`).join('')}</tbody></table></div>` : live.length ? '' : emptyHTML('clock', 'Belum ada percobaan', 'Hasil akan muncul setelah siswa menyelesaikan kuis.'));
+    if (ex) examMonitor(d.module.id);
     return;
   }
   box.innerHTML = `<div class="sk sk-line"></div><div class="sk sk-line"></div><div class="sk sk-line" style="width:60%"></div>`;
@@ -2000,6 +2043,31 @@ async function loadQuizTab(tab) {
   drawQuestions();
 }
 function pauseText(a) { return `Terputus ${a.pause_count}× · ${dur(a.pause_ms)}`; }
+/** Ujian: tab Hasil diperbarui otomatis tiap 10 detik agar guru/pengawas melihat status terkini. */
+function examMonitor(mid) {
+  clearTimeout(S.exMon);
+  S.exMon = setTimeout(async () => {
+    if (S.path.indexOf('/mod/' + mid) !== 0 || S.modSub !== 'results' || document.hidden || $('.sheet-wrap, .alert-wrap')) { if (S.path.indexOf('/mod/' + mid) === 0) examMonitor(mid); return; }
+    try {
+      const d = await call('module', { id: mid });
+      if (S.path.indexOf('/mod/' + mid) !== 0 || S.modSub !== 'results') return;
+      S.cache.set('mod:' + mid, d);
+      S.mod = d;
+      const y = scrollY;
+      loadQuizTab('results');
+      const h = $('[data-act="quizTab"][data-v="results"]'); if (h) h.textContent = 'Hasil (' + d.summary.attempts + ')';
+      window.scrollTo(0, y);
+    } catch (e) { examMonitor(mid); }
+  }, 10000);
+}
+function openViolLog(a) {
+  const log = (a.vlog || []).slice().reverse();
+  sheet({
+    title: 'Log ujian · ' + a.user.name, cancel: 'Tutup', size: 'lg',
+    body: `<div class="row" style="gap:8px;margin-bottom:14px;flex-wrap:wrap"><span class="chip ${a.violations ? 'orange' : ''}">${ic('alert', 'sm')} ${a.violations} pelanggaran</span>${a.locked ? `<span class="chip red">${ic('lock', 'sm')} Terkunci</span>` : ''}${a.pause_count ? `<span class="chip">${ic('wifioff', 'sm')} ${pauseText(a)}</span>` : ''}</div>
+      ${log.length ? `<div class="vlog">${log.map(e => `<div class="vl ${e.v ? 'bad' : 'info'}"><span class="vt">${new Date(e.t).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span><span class="vd">${e.v ? ic('alert', 'sm') : ic('info', 'sm')}<span>${esc(EXAM_LBL[e.type] || e.type)}${e.d && e.type !== 'unlock' ? ` <span class="faint">— ${esc(e.d)}</span>` : e.type === 'unlock' && e.d ? ` <span class="faint">oleh ${esc(e.d)}</span>` : ''}</span></span></div>`).join('')}</div>` : emptyHTML('shield', 'Tidak ada pelanggaran', 'Siswa ini mengerjakan tanpa terdeteksi pelanggaran.')}`
+  });
+}
 function drawQuestions() {
   const box = $('#quizTab'), qs = S.questions || [];
   if (!box) return;
@@ -2294,8 +2362,14 @@ async function pageAttempt(moduleId) {
   const resumeOnly = S.resumeOnly === moduleId;
   S.resumeOnly = null;
   let d;
-  try { d = await api('startAttempt', resumeOnly ? { id: moduleId, resume_only: true } : { id: moduleId }); } catch (e) { go(resumeOnly ? '/dashboard' : '/mod/' + moduleId, true); return; }
+  const tk = S.examToken && S.examToken.id === moduleId ? S.examToken.token : '';
+  S.examToken = null;
+  const sp = { id: moduleId, session: TAB_ID };
+  if (resumeOnly) sp.resume_only = true;
+  if (tk) sp.token = tk;
+  try { d = await api('startAttempt', sp); } catch (e) { go(resumeOnly ? '/dashboard' : '/mod/' + moduleId, true); return; }
   if (S.path !== '/attempt/' + moduleId) return;
+  if (d.need_token) { toast('Masukkan token ujian terlebih dahulu.', 'info'); go('/mod/' + moduleId, true); return; }
   if (d.none) { toast('Kuis ini sudah selesai.', 'info'); S.cache.clear(); go('/mod/' + moduleId, true); return; }
   if (d.finished) { toast('Waktu habis — jawaban terakhir Anda dikirim otomatis.', 'info'); go('/review/' + d.attempt_id, true); return; }
   const at = d.attempt, skew = at.now - Date.now(), local = LS.get('att_' + at.id, null);
@@ -2307,8 +2381,16 @@ async function pageAttempt(moduleId) {
     pm: !!at.pause, left: at.remaining || 0, syncAt: Date.now(), online: true, hbMs: at.heartbeat || 30000, away: 0, lastTick: Date.now(),
     lastOk: Date.now(), lastSave: 0, saveT: 0
   };
-  setChrome({ title: d.quiz.title, back: '/mod/' + moduleId, focus: true });
-  renderAttempt();
+  setChrome({ title: d.quiz.title, back: d.quiz.exam ? null : '/mod/' + moduleId, focus: true });
+  if (d.quiz.exam) {
+    const lv = LS.get('exleave_' + at.id, 0);
+    if (lv) {
+      LS.del('exleave_' + at.id);
+      if (Date.now() - lv > 15000 && !at.preview) { const q = LS.get('exq_' + at.id, []); q.push({ type: 'hidden', t: lv + skew }); LS.set('exq_' + at.id, q); }
+    }
+  }
+  if (d.quiz.exam) { A.ex = { violations: at.violations || 0, strikes: at.strikes || 0, max: at.max || d.quiz.exam.max, locked: !!at.locked, action: at.action || d.quiz.exam.action }; examGate(A); }
+  else renderAttempt();
   if (at.deadline || A.pm) A.timer = setInterval(tick, 1000);
   A.hbTimer = setInterval(() => hb(true), A.pm ? A.hbMs : 25000);
   if (dirty) hb();
@@ -2335,6 +2417,7 @@ function attStop(leave) {
   const A = S.att;
   if (!A) return;
   clearInterval(A.timer); clearInterval(A.hbTimer); clearInterval(A.retry); clearTimeout(A.saveT); A.retry = 0; A.saveT = 0;
+  examStop(A);
   if (leave && A.pm && !A.done && A.online) attLeave(A, false);
   A.done = true;
   if (S.att === A) S.att = null;
@@ -2342,7 +2425,7 @@ function attStop(leave) {
 }
 /** Beri tahu server bahwa siswa keluar dengan sengaja saat masih online: waktu tetap berjalan. */
 function attLeave(A, beacon) {
-  const payload = { id: A.d.attempt.id };
+  const payload = { id: A.d.attempt.id, session: TAB_ID };
   if (A.dirty) payload.answers = A.ans;
   if (!beacon || DEMO) { call('leaveAttempt', payload, 8000).catch(() => {}); return; }
   // halaman sedang ditutup/disembunyikan: kirim dengan keepalive agar tetap sampai walau halaman sudah hilang
@@ -2364,10 +2447,10 @@ function fmtLeft(ms) {
 async function hb(fromInterval) {
   const A = S.att;
   if (!A || A.done || A.finishing || A.hbBusy) return;
-  if (!A.pm && !A.dirty && !A.offline) return;
+  if (!A.pm && !A.dirty && !A.offline && !A.ex) return;
   if (fromInterval && !A.dirty && !A.offline && Date.now() - A.lastOk < A.hbMs - 5000) return;   // baru saja tersambung lewat simpan jawaban
   A.hbBusy = true;
-  const sendAns = A.dirty, away = A.away, netLost = A.netLost, payload = { id: A.d.attempt.id };
+  const sendAns = A.dirty && !(A.ex && A.ex.locked), away = A.away, netLost = A.netLost, payload = { id: A.d.attempt.id, session: TAB_ID };
   if (sendAns) payload.answers = A.ans;
   if (away) payload.away = away;
   if (netLost) payload.net_lost = 1;
@@ -2379,7 +2462,9 @@ async function hb(fromInterval) {
     if (sendAns) A.lastSave = A.lastOk;
     if (netLost) { A.netLost = false; A.retAt = 0; }
     A.away = Math.max(0, A.away - away);
+    if (r && r.kicked) { examKicked(A); return; }
     if (r && r.finished) { attOver(A, 'Waktu kuis sudah habis. Jawaban terakhir yang tersimpan sudah dikirim.'); return; }
+    if (A.ex && r && r.max) examApply(A, r);
     if (A.pm && r && r.remaining != null) { A.left = r.remaining; A.syncAt = Date.now(); A.stale = false; A.shown = null; }
     if (A.offline) attOnline(A);
   } catch (e) {
@@ -2403,12 +2488,14 @@ function attOnline(A) {
   A.online = true; A.offline = false;
   clearInterval(A.retry); A.retry = 0;
   attOfflineUI(null);
+  if (A.g) examFlush(A);
   if (S.path === '/attempt/' + A.d.quiz.id) toast(A.pendingFinish ? 'Tersambung kembali — mengirim jawaban…' : 'Tersambung kembali. Kuis dilanjutkan dengan sisa waktu yang sama.', 'success');
   if (A.pendingFinish) { A.pendingFinish = false; finishAttempt(A.pendingAuto); }
 }
 function attOver(A, msg) {
   const id = A.d.attempt.id, here = S.path === '/attempt/' + A.d.quiz.id;
   attStop(false);
+  fsExit();
   LS.del('att_' + id); LS.del('flag_' + id);
   S.cache.clear();
   toast(msg, 'info');
@@ -2435,6 +2522,312 @@ function attOfflineUI(A) {
       <p class="faint att-off-note">Boleh juga menutup halaman ini. Nanti buka lagi kuis ini, lalu ketuk <b>Lanjutkan percobaan</b>.</p></div>`
     : `<div class="att-off-bar glass">${ic('wifioff', 'sm')}<span><b>Koneksi terputus.</b> Jawaban disimpan di perangkat dan dikirim otomatis saat internet kembali.${timed ? ' Waktu tetap berjalan.' : ''}</span><button class="btn btn-sm btn-tinted" data-act="attRetry">Coba lagi</button></div>`;
 }
+/* ---------------------------------------------------------------- mode ujian (anti-curang) */
+/*  Berjalan di Android, iPhone/iPad, Mac, dan Windows (Chrome, Safari, Edge, Firefox):
+ *  - layar penuh wajib bila perangkat mendukung (iPhone tidak mendukung → tetap diawasi cara lain)
+ *  - deteksi keluar aplikasi/tab, pindah jendela, keluar layar penuh, layar terbagi/jendela mengambang
+ *  - blokir salin/tempel/potong, klik kanan, pilih teks, cetak, pintasan DevTools/simpan/sumber
+ *  - watermark nama siswa, satu perangkat/tab, halaman lain LMS dikunci selama ujian
+ *  Setiap pelanggaran dilaporkan ke server; setelah batas tercapai ujian dikunci/dikirim sesuai pengaturan guru. */
+const EXAM_LBL = {
+  hidden: 'Keluar dari halaman ujian (pindah aplikasi/tab atau layar dikunci)', blur: 'Berpindah ke jendela atau aplikasi lain',
+  fullscreen: 'Keluar dari mode layar penuh', split: 'Layar dibagi / jendela mengambang terdeteksi', copy: 'Mencoba menyalin atau memotong teks',
+  paste: 'Mencoba menempel teks', devtools: 'Mencoba membuka alat pengembang (DevTools)', screenshot: 'Menekan tombol tangkapan layar',
+  print: 'Mencoba mencetak halaman', leave: 'Mencoba membuka halaman lain di LMS', tab2: 'Ujian dibuka di dua tab sekaligus',
+  device: 'Ujian dibuka di perangkat/tab lain saat masih aktif', lock: 'Ujian dikunci', unlock: 'Kunci dibuka oleh guru',
+  resume: 'Dilanjutkan (halaman dibuka lagi, mis. setelah mati listrik, atau di perangkat lain)', submit: 'Dikirim otomatis karena melewati batas pelanggaran', start: 'Ujian dimulai'
+};
+const AWAY = { hidden: 1, blur: 1, fullscreen: 1, split: 1 };   // sering muncul bersamaan → dihitung satu kali
+const PLAT = (() => {
+  const ua = navigator.userAgent || '', mtp = navigator.maxTouchPoints || 0;
+  const ipad = /iPad/.test(ua) || (/Macintosh/.test(ua) && mtp > 1), ios = /iPhone|iPod/.test(ua);
+  const android = /Android/i.test(ua), mac = /Macintosh|Mac OS X/.test(ua) && !ipad && !ios, win = /Windows/i.test(ua);
+  return { ios, ipad, android, mac, win, touch: ios || ipad || android || mtp > 0, name: ios ? 'iPhone' : ipad ? 'iPad' : android ? 'Android' : mac ? 'Mac' : win ? 'Windows' : 'perangkat ini' };
+})();
+function fsEl() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+function fsSupported() {
+  const e = document.documentElement, en = document.fullscreenEnabled !== undefined ? document.fullscreenEnabled : document.webkitFullscreenEnabled;
+  if (en === false) return false;
+  return !!(e.requestFullscreen || e.webkitRequestFullscreen);
+}
+async function fsEnter() {
+  const e = document.documentElement;
+  try {
+    if (fsEl()) return true;
+    if (e.requestFullscreen) await e.requestFullscreen({ navigationUI: 'hide' });
+    else if (e.webkitRequestFullscreen) e.webkitRequestFullscreen();
+    await new Promise(r => setTimeout(r, 350));
+    return !!fsEl();
+  } catch (err) { return !!fsEl(); }
+}
+function fsExit() {
+  try { if (!fsEl()) return; if (document.exitFullscreen) document.exitFullscreen().catch(() => {}); else if (document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (e) { /* abaikan */ }
+}
+function orientKey() {
+  if (screen.orientation && screen.orientation.type) return screen.orientation.type;
+  if (typeof window.orientation === 'number') return Math.abs(window.orientation) === 90 ? 'landscape' : 'portrait';   // iOS lama
+  return innerWidth > innerHeight ? 'landscape' : 'portrait';
+}
+function typingFocus() { const a = document.activeElement; return !!a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable); }
+function examTip() {
+  if (PLAT.ios) return 'iPhone belum mendukung layar penuh untuk situs web. Agar lebih aman, aktifkan <b>Akses Terpandu</b> (Pengaturan → Aksesibilitas → Akses Terpandu), lalu klik tiga kali tombol samping saat ujian.';
+  if (PLAT.ipad) return 'Tutup Split View dan Slide Over. Disarankan mengaktifkan <b>Akses Terpandu</b> (klik tiga kali tombol atas/Home).';
+  if (PLAT.android) return 'Tutup aplikasi lain dan mode layar terbagi. Jika tersedia, aktifkan <b>Sematkan aplikasi</b> (Pengaturan → Keamanan → Sematkan aplikasi).';
+  if (PLAT.mac) return 'Tutup aplikasi lain. Selama ujian jangan menekan <b>Esc</b>, <b>⌘ + Tab</b>, atau membuka Mission Control.';
+  if (PLAT.win) return 'Tutup aplikasi lain. Selama ujian jangan menekan <b>Esc</b>, <b>Alt + Tab</b>, atau tombol <b>Windows</b>.';
+  return 'Tutup aplikasi lain sebelum memulai.';
+}
+/** Layar sebelum ujian: aturan + tombol mulai (layar penuh butuh ketukan pengguna). */
+function examGate(A) {
+  const X = A.d.quiz.exam, resume = !!(A.d.attempt.started_at && (Object.keys(A.ans).length || A.ex.violations || Date.now() + A.skew - A.d.attempt.started_at > 60000));
+  document.documentElement.classList.add('exam-on');
+  if (A.ex.locked) { renderAttempt(); examLockView(A); return; }
+  const fs = X.fullscreen && fsSupported(), act = X.action === 'lock' ? `ujian <b>dikunci</b> dan hanya guru/pengawas yang dapat membukanya` : X.action === 'submit' ? `jawaban <b>dikirim otomatis</b>` : `pelanggaran dicatat dan dilaporkan ke guru`;
+  setView(`<section class="exam-gate glass">
+    <div class="eg-ic">${ic('shield')}</div>
+    <h2>${resume ? 'Lanjutkan ujian' : 'Siap memulai ujian?'}</h2>
+    <p class="muted" style="margin:4px 0 0">${esc(A.d.quiz.title)} · ${esc(A.d.quiz.course || '')}</p>
+    ${A.d.attempt.preview ? `<div class="eg-note">${ic('info', 'sm')} Pratinjau guru: pelanggaran dicatat, tetapi ujian tidak dikunci.</div>` : ''}
+    <ul class="eg-rules">
+      <li>${ic('max', 'sm')}<span>${fs ? 'Ujian berlangsung dalam <b>layar penuh</b>. Keluar dari layar penuh dihitung pelanggaran.' : 'Ujian diawasi selama halaman ini terbuka.'}</span></li>
+      <li>${ic('eyeoff', 'sm')}<span>Jangan berpindah aplikasi, tab, atau jendela, dan jangan membagi layar.</span></li>
+      ${X.copy ? `<li>${ic('x', 'sm')}<span>Salin, tempel, klik kanan, dan cetak dinonaktifkan.</span></li>` : ''}
+      ${X.single ? `<li>${ic('lock', 'sm')}<span>Ujian hanya boleh dibuka di satu perangkat/tab.</span></li>` : ''}
+      ${X.lockpages ? `<li>${ic('lock', 'sm')}<span>Halaman lain LMS terkunci sampai ujian selesai.</span></li>` : ''}
+      <li>${ic('alert', 'sm')}<span>Batas <b>${X.max}</b> pelanggaran. Jika tercapai, ${act}.</span></li>
+    </ul>
+    <div class="eg-tip">${ic('info', 'sm')}<span><b>${esc(PLAT.name)}:</b> ${examTip()}</span></div>
+    ${A.ex.violations ? `<div class="eg-note warn">${ic('alert', 'sm')} Tercatat ${A.ex.violations} pelanggaran sejauh ini (${A.ex.strikes}/${A.ex.max} menuju ${X.action === 'lock' ? 'kunci' : X.action === 'submit' ? 'pengiriman otomatis' : 'batas'}).</div>` : ''}
+    <button class="btn btn-primary btn-lg w100" data-act="examGo">${ic('play', 'sm')} ${resume ? 'Lanjutkan ujian' : 'Mulai ujian'}${fs ? ' (layar penuh)' : ''}</button>
+  </section>`, false);
+}
+async function examGoNow() {
+  const A = S.att;
+  if (!A || A.done || !A.d.quiz.exam) return;
+  const X = A.d.quiz.exam;
+  let fsOk = false;
+  if (X.fullscreen && fsSupported()) {
+    fsOk = await fsEnter();
+    if (!fsOk) toast('Layar penuh tidak tersedia di browser ini — ujian tetap diawasi.', 'info');
+  }
+  examActivate(A, fsOk);
+  renderAttempt();
+  setTimeout(() => examBaseline(A), 600);
+}
+function examActivate(A, fsOk) {
+  const X = A.d.quiz.exam;
+  if (A.g) { A.g.fs = fsOk; A.g.on = true; document.documentElement.classList.add('exam-on'); return; }
+  const id = A.d.attempt.id;
+  const G = A.g = { X, on: true, fs: fsOk, queue: LS.get('exq_' + id, []), last: {}, ov: false, baseW: innerWidth, baseH: innerHeight, orient: orientKey(), blurT: 0, rzT: 0, ls: [], bc: null };
+  const on = (t, ev, fn, opt) => { t.addEventListener(ev, fn, opt); G.ls.push([t, ev, fn, opt]); };
+  on(document, 'visibilitychange', () => { if (document.hidden) examViolate('hidden'); });
+  on(window, 'blur', () => {
+    clearTimeout(G.blurT);
+    G.blurT = setTimeout(() => { if (!document.hidden && !document.hasFocus()) examViolate('blur'); }, 1200);
+  });
+  on(window, 'focus', () => clearTimeout(G.blurT));
+  on(window, 'pageshow', e => { if (e.persisted) { G.unloading = false; LS.del('exleave_' + id); } });   // kembali dari cache tombol Kembali
+  const fsChange = () => { if (G.fs && !fsEl()) examViolate('fullscreen'); };
+  on(document, 'fullscreenchange', fsChange);
+  on(document, 'webkitfullscreenchange', fsChange);
+  on(window, 'resize', () => { clearTimeout(G.rzT); G.rzT = setTimeout(() => examResize(A), 700); });
+  on(window, 'orientationchange', () => setTimeout(() => examBaseline(A), 900));
+  const block = e => { e.preventDefault(); e.stopPropagation(); };
+  if (X.copy) {
+    on(document, 'copy', e => { block(e); examViolate('copy'); }, true);
+    on(document, 'cut', e => { block(e); examViolate('copy'); }, true);
+    on(document, 'paste', e => { block(e); examViolate('paste'); }, true);
+    on(document, 'contextmenu', block, true);
+    on(document, 'dragstart', block, true);
+    on(document, 'drop', block, true);
+    on(document, 'selectstart', e => { if (!typingFocus()) e.preventDefault(); }, true);
+    on(window, 'beforeprint', () => examViolate('print'));
+  }
+  on(document, 'keydown', e => examKey(A, e), true);
+  on(document, 'keyup', e => { if (e.key === 'PrintScreen' || e.code === 'PrintScreen') { examViolate('screenshot'); try { navigator.clipboard && navigator.clipboard.writeText(' ').catch(() => {}); } catch (x) { /* abaikan */ } } }, true);
+  try {
+    G.bc = new BroadcastChannel('lms-exam');
+    G.bc.onmessage = ev => { const m = ev.data || {}; if (m.att === id && m.tab !== TAB_ID && m.type === 'hello') examKicked(A, true); };
+    G.bc.postMessage({ type: 'hello', att: id, tab: TAB_ID });
+  } catch (e) { /* browser lama */ }
+  document.documentElement.classList.add('exam-on');
+  if (G.queue.length) examFlush(A);
+}
+function examStop(A) {
+  const G = A && A.g;
+  if (!G) return;
+  G.on = false;
+  clearTimeout(G.blurT); clearTimeout(G.rzT); clearTimeout(G.hidT); clearInterval(A.lockPoll);
+  G.ls.forEach(([t, ev, fn, opt]) => t.removeEventListener(ev, fn, opt));
+  G.ls = [];
+  try { G.bc && G.bc.close(); } catch (e) { /* abaikan */ }
+  A.g = null;
+  document.documentElement.classList.remove('exam-on');
+  examOv(null);
+  const wm = $('#examWm'); if (wm) wm.remove();
+}
+function examKey(A, e) {
+  const G = A.g;
+  if (!G || !G.on) return;
+  const k = (e.key || '').toLowerCase(), mod = e.ctrlKey || e.metaKey;
+  if (e.key === 'F12' || (mod && e.shiftKey && 'ijc'.includes(k) && k) || (e.metaKey && e.altKey && 'ijcu'.includes(k) && k)) { e.preventDefault(); examViolate('devtools'); return; }
+  if (e.key === 'PrintScreen' || (e.metaKey && e.shiftKey && '3456'.includes(e.key))) { examViolate('screenshot'); return; }
+  if (!mod) return;
+  if (G.X.copy && (k === 'c' || k === 'x')) { e.preventDefault(); examViolate('copy'); return; }
+  if (G.X.copy && k === 'v') { e.preventDefault(); examViolate('paste'); return; }
+  if (k === 'p') { e.preventDefault(); examViolate('print'); return; }
+  if ('suofghkljnt'.includes(k) && k) { e.preventDefault(); e.stopPropagation(); }      // simpan, sumber, buka, cari, riwayat, tab/jendela baru
+  if (k === 'a' && !typingFocus()) e.preventDefault();
+}
+function examBaseline(A) {
+  const G = A && A.g;
+  if (!G) return;
+  G.baseW = innerWidth; G.baseH = innerHeight; G.orient = orientKey();
+}
+function examResize(A) {
+  const G = A && A.g;
+  if (!G || !G.on) return;
+  const w = innerWidth, h = innerHeight, o = orientKey();
+  const swapped = Math.abs(w - G.baseH) <= G.baseH * 0.25 && Math.abs(h - G.baseW) <= G.baseW * 0.4;
+  if (o !== G.orient || swapped) { examBaseline(A); return; }                  // layar diputar, bukan dibagi
+  if (w < G.baseW * 0.85 || (!typingFocus() && h < G.baseH * 0.62)) { examViolate('split'); return; }
+  if (w > G.baseW) G.baseW = w;
+  if (h > G.baseH) G.baseH = h;
+}
+/** Catat pelanggaran: tampilkan peringatan, simpan di perangkat, kirim ke server. */
+function examViolate(type) {
+  const A = S.att, G = A && A.g;
+  if (!G || !G.on || G.unloading || A.done || A.finishing || (A.ex && A.ex.locked)) return;
+  const now = Date.now();
+  if (G.ov && (type === 'blur' || type === 'fullscreen' || type === 'split')) return;   // peringatan sedang tampil
+  if (AWAY[type]) { if (G.lastAway && now - G.lastAway < 3000) return; G.lastAway = now; }
+  else if (G.last[type] && now - G.last[type] < 2500) return;
+  G.last[type] = now;
+  G.queue.push({ type, t: now + A.skew });
+  LS.set('exq_' + A.d.attempt.id, G.queue);
+  if (!A.d.attempt.preview) A.ex.strikes = Math.min(A.ex.max, A.ex.strikes + 1);
+  A.ex.violations++;
+  examBar(A);
+  examWarn(A, type);
+  if (type === 'hidden') { clearTimeout(G.hidT); G.hidT = setTimeout(() => examFlush(A), 450); }   // beri waktu: muat ulang halaman tidak dihitung
+  else examFlush(A);
+}
+/** Halaman ujian ditutup/dimuat ulang: pelanggaran "keluar" yang barusan dibatalkan; bila siswa
+ *  baru kembali >15 detik kemudian, dihitung saat ujian dibuka lagi (mati listrik tidak dihitung). */
+function examPageHide(A) {
+  const G = A && A.g;
+  if (!G || !G.on || A.done) return;
+  G.unloading = true;                 // pagehide datang sebelum visibilitychange saat halaman ditutup/dimuat ulang
+  const now = Date.now();
+  clearTimeout(G.hidT);
+  G.queue = G.queue.filter(e => !(e.type === 'hidden' && now + A.skew - e.t < 1500));
+  LS.set('exq_' + A.d.attempt.id, G.queue);
+  LS.set('exleave_' + A.d.attempt.id, now);
+}
+async function examFlush(A, wait) {
+  const G = A && A.g;
+  if (!G || !G.queue.length || A.done) return;
+  if (G.flushing) { if (wait) await G.flushing; return; }
+  if (A.offline) return;
+  const batch = G.queue.slice(0, 30);
+  G.flushing = (async () => {
+    try {
+      const r = await call('examEvent', { id: A.d.attempt.id, session: TAB_ID, events: batch }, 15000);
+      if (A.g !== G) return;
+      G.queue = G.queue.slice(batch.length);
+      LS.set('exq_' + A.d.attempt.id, G.queue);
+      if (r && r.kicked) { examKicked(A); return; }
+      if (r && r.finished) { attOver(A, r.auto ? 'Ujian dikirim otomatis karena melewati batas pelanggaran.' : 'Ujian sudah selesai.'); return; }
+      if (r && r.max) examApply(A, r);
+    } catch (e) {
+      if (e.auth) { handleAuthLost(e.message); return; }
+      if (e.net) attOffline(A);
+    } finally { G.flushing = null; }
+    if (A.g === G && G.queue.length && !A.offline && !A.done) setTimeout(() => examFlush(A), 1500);
+  })();
+  if (wait) await G.flushing;
+}
+function examApply(A, r) {
+  const was = A.ex.locked;
+  A.ex = { violations: r.violations, strikes: r.strikes, max: r.max, locked: !!r.locked, action: r.action || A.ex.action };
+  examBar(A);
+  if (A.ex.locked && !was) { examOv(null); examLockView(A); }
+  else if (!A.ex.locked && was) examUnlocked(A);
+}
+function examBar(A) {
+  const el = $('#examBar');
+  if (!el || !A.ex) return;
+  el.querySelector('b').textContent = A.ex.strikes + '/' + A.ex.max;
+  el.classList.toggle('warn', A.ex.strikes > 0);
+}
+/** Lapisan layar ujian (peringatan / terkunci / tab lain). null = tutup. */
+function examOv(html, cls) {
+  let el = $('#examOv');
+  const G = S.att && S.att.g;
+  if (!html) { if (el) el.remove(); if (G) G.ov = false; return null; }
+  if (!el) { el = document.createElement('div'); el.id = 'examOv'; document.body.appendChild(el); }
+  el.className = 'exam-ov ' + (cls || '');
+  el.setAttribute('role', 'alertdialog'); el.setAttribute('aria-live', 'assertive');
+  el.innerHTML = `<div class="exam-card glass thick">${html}</div>`;
+  if (G) G.ov = true;
+  return el;
+}
+function examDots(A) {
+  return `<div class="ex-dots" aria-label="${A.ex.strikes} dari ${A.ex.max} pelanggaran">${Array.from({ length: Math.min(A.ex.max, 10) }, (_, k) => `<i class="${k < A.ex.strikes ? 'on' : ''}"></i>`).join('')}</div>`;
+}
+function examWarn(A, type) {
+  const left = A.ex.max - A.ex.strikes, X = A.d.quiz.exam, prev = !!A.d.attempt.preview;
+  const what = X.action === 'lock' ? 'ujian dikunci' : X.action === 'submit' ? 'jawaban dikirim otomatis' : 'pelanggaran dilaporkan ke guru';
+  examOv(`<div class="aic red">${ic('alert', 'lg')}</div><h3>Pelanggaran terdeteksi</h3><p class="ex-what">${esc(EXAM_LBL[type] || type)}</p>
+    ${examDots(A)}
+    <p>${prev ? 'Pratinjau guru — ujian tidak akan dikunci.' : left > 0 ? `Pelanggaran ke-<b>${A.ex.strikes}</b> dari ${A.ex.max}. Jika mencapai ${A.ex.max}, ${what}.` : `Batas pelanggaran tercapai — ${what}.`} Kejadian ini tercatat dan terlihat oleh guru.</p>
+    <button class="btn btn-primary btn-lg w100" data-act="examBack">${ic('shield', 'sm')} ${A.g && A.g.fs ? 'Kembali ke ujian (layar penuh)' : 'Kembali ke ujian'}</button>`, 'warn');
+}
+async function examBackNow() {
+  const A = S.att;
+  if (!A || !A.g) return;
+  if (A.g.fs && !fsEl()) { const ok = await fsEnter(); if (!ok) { A.g.fs = false; toast('Layar penuh tidak dapat diaktifkan lagi — ujian tetap diawasi.', 'info'); } }
+  examOv(null);
+  setTimeout(() => examBaseline(A), 600);
+}
+function examLockView(A) {
+  examOv(`<div class="aic red">${ic('lock', 'lg')}</div><h3>Ujian dikunci</h3>
+    <p>Anda mencapai <b>${A.ex.strikes}</b> pelanggaran. Minta guru/pengawas membuka kunci dari halaman <b>Hasil</b> ujian ini. Jawaban Anda tetap tersimpan.</p>
+    <div class="att-off-time"><span>${ic('clock', 'sm')} Waktu tetap berjalan</span><b id="lockLeft">${A.pm || A.d.attempt.deadline ? fmtLeft(attLeft(A)) : '—'}</b><small>sisa waktu</small></div>
+    <div class="att-off-st"><span class="spinner"></span> Menunggu kunci dibuka…</div>
+    <button class="btn btn-tinted w100" data-act="examCheck">${ic('refresh', 'sm')} Periksa lagi</button>`, 'lock');
+  clearInterval(A.lockPoll);
+  A.lockPoll = setInterval(() => { if (!A.done && A.ex.locked) hb(); else clearInterval(A.lockPoll); }, 8000);
+}
+function examUnlocked(A) {
+  clearInterval(A.lockPoll);
+  examOv(null);
+  toast('Kunci ujian dibuka oleh guru. Silakan lanjutkan.', 'success');
+  if (S.path === '/attempt/' + A.d.quiz.id) { if (A.g) A.g.on = false; examGate(A); }
+}
+/** Ujian dibuka di perangkat/tab lain: tab ini berhenti. */
+function examKicked(A, local) {
+  if (!A || A.done) return;
+  const qid = A.d.quiz.id;
+  attStop(false);
+  fsExit();
+  if (S.path !== '/attempt/' + qid) return;
+  S.onLeave = null;
+  setView(`<section class="exam-gate glass"><div class="eg-ic warn">${ic('lock')}</div><h2>Ujian dibuka di ${local ? 'tab' : 'perangkat/tab'} lain</h2>
+    <p class="muted">Demi keamanan, ujian hanya boleh dikerjakan di satu tempat. Lanjutkan di ${local ? 'tab' : 'perangkat'} yang baru, atau ambil alih di sini (perpindahan dicatat untuk guru).</p>
+    <div class="row" style="gap:10px;justify-content:center;margin-top:18px;flex-wrap:wrap"><button class="btn btn-glass" data-go="/dashboard">Ke dasbor</button><button class="btn btn-primary" data-act="examTakeover" data-id="${qid}">${ic('refresh', 'sm')} Lanjutkan di sini</button></div></section>`, false);
+}
+function examWatermark(A) {
+  const X = A.d.quiz.exam;
+  let wm = $('#examWm');
+  if (!X || !X.watermark) { if (wm) wm.remove(); return; }
+  if (wm) return;
+  const u = S.user || {}, txt = `${u.name || ''} · ${u.nisn || u.username || ''} · ${new Date(Date.now() + A.skew).toLocaleDateString('id-ID')}`;
+  wm = document.createElement('div');
+  wm.id = 'examWm'; wm.setAttribute('aria-hidden', 'true');
+  wm.innerHTML = Array.from({ length: 40 }, () => `<span>${esc(txt)}</span>`).join('');
+  document.body.appendChild(wm);
+}
 window.addEventListener('offline', () => { const A = S.att; if (A && !A.done) { A.sawOffline = true; if (!document.hidden) attOffline(A); } });
 window.addEventListener('online', () => { const A = S.att; if (A && !A.done) hb(); });
 document.addEventListener('visibilitychange', () => {
@@ -2449,12 +2842,16 @@ document.addEventListener('visibilitychange', () => {
   }
   hb();
 });
-window.addEventListener('pagehide', () => { const A = S.att; if (A && !A.done && A.pm && A.online && navigator.onLine !== false) attLeave(A, true); });
+window.addEventListener('pagehide', () => {
+  const A = S.att;
+  if (A && !A.done && A.g) examPageHide(A);
+  if (A && !A.done && A.pm && A.online && navigator.onLine !== false) attLeave(A, true);
+});
 function isAnswered(q) { const a = S.att.ans[q.id]; return !(a === undefined || a === null || a === '' || (Array.isArray(a) && !a.length)); }
 function renderAttempt() {
   const A = S.att, d = A.d, qs = d.questions, n = qs.length;
   const answered = qs.filter(isAnswered).length;
-  const side = `<aside class="att-side glass"><div class="row between" style="margin-bottom:12px"><b>${d.attempt.preview ? 'Pratinjau (guru)' : 'Navigasi soal'}</b><span class="faint" style="font-size:12.5px" id="ansCount">${answered}/${n} dijawab</span></div>
+  const side = `<aside class="att-side glass">${A.ex ? `<div class="exam-bar ${A.ex.strikes ? 'warn' : ''}" id="examBar">${ic('shield', 'sm')}<span>Mode ujian${d.attempt.preview ? ' (pratinjau)' : ''}</span><span class="grow"></span><span>Pelanggaran <b>${A.ex.strikes}/${A.ex.max}</b></span></div>` : ''}<div class="row between" style="margin-bottom:12px"><b>${d.attempt.preview ? 'Pratinjau (guru)' : 'Navigasi soal'}</b><span class="faint" style="font-size:12.5px" id="ansCount">${answered}/${n} dijawab</span></div>
     ${d.attempt.deadline || A.pm ? `<div class="timer ${A.pm && !A.online ? 'paused' : ''}" id="timer">${ic('clock')}<span>${A.pm || d.attempt.deadline ? fmtLeft(attLeft(A)) : '--:--'}</span></div>${A.pm ? `<div class="timer-note">${ic('pause', 'sm')} Waktu berhenti otomatis bila internet terputus</div>` : ''}` : ''}
     <div class="qnav" id="qnav">${qs.map((x, k) => `<button class="qn ${isAnswered(x) ? 'ans' : ''} ${k === A.i && !A.summary ? 'cur' : ''} ${A.flags[x.id] ? 'flag' : ''}" data-act="qGo" data-k="${k}" aria-label="Soal ${k + 1}">${k + 1}</button>`).join('')}</div>
     <button class="btn btn-tinted w100" style="margin-top:14px" data-act="attSummary">Selesaikan percobaan…</button></aside>`;
@@ -2469,6 +2866,7 @@ function renderAttempt() {
     main = questionHTML(q, A.i) + `<div class="att-foot"><button class="btn btn-glass" data-act="qPrev" ${A.i === 0 ? 'disabled' : ''}>${ic('left', 'sm')} Sebelumnya</button>${A.i < n - 1 ? `<button class="btn btn-primary" data-act="qNext">Berikutnya ${ic('right', 'sm')}</button>` : `<button class="btn btn-primary" data-act="attSummary">Selesai ${ic('check', 'sm')}</button>`}</div>`;
   }
   setView(`<div class="att"><div>${main}</div>${side}</div>`, false);
+  if (A.g) examWatermark(A);
   const sa = $('#shortAns');
   if (sa) sa.addEventListener('input', () => { A.ans[sa.dataset.q] = sa.value; markDirty(); refreshQNav(); });
   tick();
@@ -2481,7 +2879,7 @@ function questionHTML(q, k) {
   } else if (q.type === 'tf') {
     body = `<div class="tf">${[[true, 'Benar'], [false, 'Salah']].map(x => `<button class="opt ${a === x[0] ? 'on' : ''}" data-act="pick" data-q="${q.id}" data-tf="${x[0]}">${x[1]}</button>`).join('')}</div>`;
   } else {
-    body = `<input class="input" id="shortAns" data-q="${q.id}" placeholder="Ketik jawaban Anda…" value="${esc(a || '')}" autocomplete="off" style="font-size:17px">`;
+    body = `<input class="input" id="shortAns" data-q="${q.id}" placeholder="Ketik jawaban Anda…" value="${esc(a || '')}" autocomplete="off" autocapitalize="off" spellcheck="false" style="font-size:17px">`;
   }
   return `<section class="qcard glass ${A.dir || ''}"><div class="q-head"><span class="q-no">Soal ${k + 1} dari ${A.d.questions.length}</span><span class="chip">${fNum(q.points)} poin</span><span class="grow"></span><button class="btn btn-sm ${A.flags[q.id] ? 'btn-tinted' : ''}" data-act="flagQ" data-q="${q.id}">${ic('flag', 'sm')} ${A.flags[q.id] ? 'Ditandai' : 'Tandai'}</button></div><div class="q-text rich">${sanitize(q.text)}</div>${body}</section>`;
 }
@@ -2508,6 +2906,7 @@ function tick() {
     el.classList.toggle('paused', A.pm && !A.online);
   }
   if (off) off.textContent = fmtLeft(left);
+  const ll = $('#lockLeft'); if (ll) ll.textContent = fmtLeft(left);
   if (left <= 0 && !A.finishing && !A.pendingFinish && (!A.pm || (A.online && !A.stale))) {
     if (S.path === '/attempt/' + A.d.quiz.id) toast('Waktu habis! Jawaban dikirim otomatis.', 'info');
     finishAttempt(true);
@@ -2518,15 +2917,19 @@ async function finishAttempt(auto) {
   const A = S.att;
   if (!A || A.finishing || A.done) return;
   A.finishing = true;
+  if (A.g) A.g.on = false;                      // pengiriman jawaban: penjaga ujian berhenti sementara
+  examOv(null);
   const here = () => S.path === '/attempt/' + A.d.quiz.id;
   if (here()) setView(`<div class="card glass" style="max-width:420px;margin:60px auto;text-align:center;padding:40px 20px"><span class="spinner" style="width:40px;height:40px;border-width:3px"></span><h3 style="margin:18px 0 4px">Mengirim jawaban…</h3><p class="muted" style="margin:0">Mohon tunggu sebentar.</p></div>`, false);
   let lastErr = null;
   for (let tries = 0; tries < 3; tries++) {
     try {
-      await call('finishAttempt', { id: A.d.attempt.id, answers: A.ans }, 20000);
+      if (A.g && A.g.queue.length) { try { await examFlush(A, true); } catch (e2) { /* lanjut */ } }
+      await call('finishAttempt', { id: A.d.attempt.id, answers: A.ans, session: TAB_ID, auto: !!auto }, 20000);
       S.cache.clear();
       const id = A.d.attempt.id, wasHere = here();
       attStop(false);
+      fsExit();
       LS.del('flag_' + id); LS.del('att_' + id);
       if (wasHere) { S.onLeave = null; S.justFinished = id; go('/review/' + id, true); }
       else toast('Waktu kuis habis — jawaban Anda sudah dikirim.', 'info');
@@ -2535,10 +2938,12 @@ async function finishAttempt(auto) {
       lastErr = e;
       if (e.auth) { handleAuthLost(e.message); return; }
       if (e.net) break;
+      if (A.g && /dikunci|perangkat\/tab lain/.test(e.message)) break;
       await new Promise(r => setTimeout(r, 1500));
     }
   }
   A.finishing = false;
+  if (A.g && !A.done) A.g.on = true;
   if (lastErr && lastErr.net) {           // internet putus: kirim ulang otomatis begitu tersambung
     A.pendingFinish = true; A.pendingAuto = auto;
     if (here()) renderAttempt();
@@ -2553,6 +2958,7 @@ async function pageReview(id) {
   let d;
   try { d = await api('review', { id }); } catch (e) { renderError(e); return; }
   if (S.path !== '/review/' + id) return;
+  S.review = d;
   const a = d.attempt, q = d.quiz, pct = q.max_grade ? a.grade / q.max_grade * 100 : 0, fresh = S.justFinished === id;
   S.justFinished = null;
   setChrome({ title: q.title, back: '/mod/' + q.id });
@@ -2569,10 +2975,11 @@ async function pageReview(id) {
       ${d.user ? `<div class="gi"><span class="k">Peserta</span><span class="v">${esc(d.user.name)}</span></div>` : ''}
       <div class="gi"><span class="k">Dimulai</span><span class="v">${fDT(a.started_at)}</span></div>
       <div class="gi"><span class="k">Selesai</span><span class="v">${fDT(a.finished_at)}</span></div>
-      <div class="gi"><span class="k">Waktu pengerjaan</span><span class="v">${dur(a.finished_at - a.started_at)}</span></div>
-      <div class="gi"><span class="k">Nilai</span><span class="v">${fNum(a.grade)} / ${fNum(q.max_grade)}</span></div></div>
+      <div class="gi"><span class="k">Waktu pengerjaan</span><span class="v">${dur(a.time_used || a.finished_at - a.started_at)}</span></div>
+      <div class="gi"><span class="k">Nilai</span><span class="v">${fNum(a.grade)} / ${fNum(q.max_grade)}</span></div>
+      ${q.exam ? `<div class="gi"><span class="k">Pelanggaran ujian</span><span class="v">${a.violations ? `<span class="chip orange">${ic('alert', 'sm')} ${a.violations}</span>` : '0'}${d.role === 'teacher' && a.vlog && a.vlog.length ? ` <button class="btn btn-plain btn-sm" data-act="rvLog">Lihat log</button>` : ''}</span></div>` : ''}</div>
       <div class="qnav" style="margin-top:14px">${d.items.map((it, k) => `<button class="qn ${it.response === null ? '' : it.fraction >= 1 ? 'ok' : it.fraction > 0 ? 'part' : 'bad'}" data-act="rvJump" data-k="${k}">${k + 1}</button>`).join('')}</div>
-      <button class="btn btn-primary w100" style="margin-top:14px" data-go="/mod/${q.id}">Kembali ke kuis</button></section></div></div>`);
+      <button class="btn btn-primary w100" style="margin-top:14px" data-go="/mod/${q.id}">${q.exam ? 'Kembali ke ujian' : 'Kembali ke kuis'}</button></section></div></div>`);
 }
 function reviewItemHTML(it, k, show) {
   const r = it.response, c = it.correct;
@@ -2648,7 +3055,7 @@ async function pageCalendar() {
   await swr('cal', 'calendar', {}, (d, c, refresh) => { S.calEvents = d.events; renderCalendar(!refresh); }, () => skel());
 }
 function evRow(e) {
-  const T = TYPES[e.type];
+  const T = tOf(e);
   return `<div class="li" data-go="/mod/${e.module_id}"><span class="aicon sm" data-p="${T.p}">${ic(T.icon)}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(e.title)}</div><div class="ls ellipsis">${e.kind === 'due' ? (e.type === 'quiz' ? 'Ditutup' : 'Batas waktu') : 'Dibuka'} ${fTime(e.time)} · ${esc(e.course)}</div></div>${e.done && e.role === 'student' ? `<span class="chip green">${ic('check')}</span>` : ''}</div>`;
 }
 function renderCalendar(anim) {
@@ -3006,7 +3413,7 @@ function openSpot() {
     try {
       const r = await api('search', { q }, { silent: true });
       if (my !== seq) return;
-      draw([['Halaman', pg], ['Mapel', r.courses.map(c => ({ t: c.fullname, s: c.shortname + (c.enrolled ? '' : ' · belum terdaftar'), icon: `<span class="cover" style="width:30px;height:30px;border-radius:9px;overflow:hidden;position:relative;display:block;flex:none">${coverSVG(c.id, c.cover)}</span>`, go: '/course/' + c.id }))], ['Aktivitas & materi', r.modules.map(m => ({ t: m.title, s: TYPES[m.type].name + ' · ' + m.course, icon: `<span class="aicon sm" data-p="${TYPES[m.type].p}">${ic(TYPES[m.type].icon)}</span>`, go: '/mod/' + m.id }))], ['Pengguna', r.users.map(u => ({ t: u.name, s: '@' + u.username + ' · ' + ROLE[u.role], icon: av(u, 'sm'), go: '/admin/users' }))]]);
+      draw([['Halaman', pg], ['Mapel', r.courses.map(c => ({ t: c.fullname, s: c.shortname + (c.enrolled ? '' : ' · belum terdaftar'), icon: `<span class="cover" style="width:30px;height:30px;border-radius:9px;overflow:hidden;position:relative;display:block;flex:none">${coverSVG(c.id, c.cover)}</span>`, go: '/course/' + c.id }))], ['Aktivitas & materi', r.modules.map(m => ({ t: m.title, s: tOf(m).name + ' · ' + m.course, icon: `<span class="aicon sm" data-p="${tOf(m).p}">${ic(tOf(m).icon)}</span>`, go: '/mod/' + m.id }))], ['Pengguna', r.users.map(u => ({ t: u.name, s: '@' + u.username + ' · ' + ROLE[u.role], icon: av(u, 'sm'), go: '/admin/users' }))]]);
     } catch (e) { /* abaikan */ }
   }, 260);
   inp.addEventListener('input', search);
@@ -3157,7 +3564,7 @@ const A = {
       { label: 'Hapus', icon: 'trash', danger: true, fn: async () => { if (await ask({ title: 'Hapus aktivitas?', message: `"${m.title}" beserta data terkait akan dihapus permanen.`, ok: 'Hapus', danger: true, icon: 'trash' })) { await mutate('deleteModule', { id: m.id }); toast('Aktivitas dihapus'); go('/course/' + d.course.id, true); } } }
     ]);
   },
-  jumpMenu: b => { const d = S.mod; menu(b, d.jump.map(j => ({ label: (j.id === d.module.id ? '● ' : '') + j.title, icon: TYPES[j.type].icon, fn: () => go('/mod/' + j.id) })), { header: 'Lompat ke…' }); },
+  jumpMenu: b => { const d = S.mod; menu(b, d.jump.map(j => ({ label: (j.id === d.module.id ? '● ' : '') + j.title, icon: tOf(j).icon, fn: () => go('/mod/' + j.id) })), { header: 'Lompat ke…' }); },
   subOpen: () => openSubmitForm(),
   subFilter: b => { S.subFilter = b.dataset.v; drawSubList(); },
   gradeOpen: b => openGrader(b.dataset.uid),
@@ -3169,6 +3576,17 @@ const A = {
   },
   quizStart: async () => {
     const d = S.mod, c = d.module.config || {};
+    if (d.exam && !d.inprogress) {
+      if (d.exam.token) {
+        sheet({ title: 'Token ujian', ok: 'Mulai ujian', body: `<div class="form"><p class="muted" style="margin:0 0 12px">Masukkan token yang diberikan guru/pengawas.</p>${fInput('token', 'Token', '', { req: true, ph: 'mis. KKA25', attrs: 'autocomplete="off" autocapitalize="characters" spellcheck="false" style="text-transform:uppercase;font-size:20px;letter-spacing:.12em;text-align:center"' })}</div>`,
+          onOk: async sh => { const t = String(fv(sh.el, 'token') || '').replace(/\s+/g, '').toUpperCase(); if (!t) throw new Error('Token wajib diisi.'); S.examToken = { id: d.module.id, token: t }; setTimeout(() => go('/attempt/' + d.module.id), 50); } });
+        return;
+      }
+      const ok = await ask({ title: 'Mulai ujian?', message: `Mode ujian aktif: ${d.exam.fullscreen ? 'ujian berlangsung dalam layar penuh, ' : ''}berpindah aplikasi/tab/jendela dan salin-tempel dicatat sebagai pelanggaran. Batas ${d.exam.max} pelanggaran.${c.time_limit ? ` Waktu ${c.time_limit} menit.` : ''}`, ok: 'Lanjut', icon: 'shield' });
+      if (!ok) return;
+      go('/attempt/' + d.module.id);
+      return;
+    }
     if (!d.inprogress && c.time_limit) {
       const ok = await ask({ title: 'Mulai kuis?', message: d.pauseOffline ? `Kuis ini memiliki batas waktu ${c.time_limit} menit. Waktu mulai berjalan saat Anda menekan Mulai. Jika internet terputus, waktu otomatis berhenti dan Anda bisa melanjutkan dengan soal & sisa waktu yang sama. Menutup halaman atau pindah aplikasi saat online tetap menghabiskan waktu.` : `Kuis ini memiliki batas waktu ${c.time_limit} menit. Waktu mulai berjalan saat Anda menekan Mulai dan tidak dapat dijeda.`, ok: 'Mulai', icon: 'clock' });
       if (!ok) return;
@@ -3177,6 +3595,15 @@ const A = {
   },
   quizTab: b => { const v = b.dataset.v; S.modSub = v === 'info' ? S.modSub : v; const qa = $('#qActions'); if (qa) qa.style.visibility = v === 'info' ? 'hidden' : 'visible'; if (v !== 'info' && qa) qa.innerHTML = v === 'questions' ? `<button class="btn btn-glass btn-sm" data-go="/attempt/${S.mod.module.id}">${ic('play', 'sm')} Pratinjau</button><button class="btn btn-tinted btn-sm" data-act="qImport">${ic('upload', 'sm')} Impor</button><button class="btn btn-primary btn-sm" data-act="qAdd">${ic('plus', 'sm')} Tambah soal</button>` : `<button class="btn btn-tinted btn-sm" data-act="resExport">${ic('download', 'sm')} Ekspor</button>`; loadQuizTab(v); },
   qAdd: () => openQuestionForm(null),
+  examTokGen: b => { const f = b.closest('.sheet') && b.closest('.sheet').querySelector('[name=exam_token]'); if (f) { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; f.value = Array.from({ length: 6 }, () => A[Math.floor(Math.random() * A.length)]).join(''); } },
+  attUnlock: async b => {
+    if (!(await ask({ title: 'Buka kunci ujian?', message: 'Siswa dapat melanjutkan ujian dengan soal, jawaban, dan sisa waktu yang sama. Hitungan pelanggaran menuju kunci berikutnya dimulai dari nol.', ok: 'Buka kunci', icon: 'lock' }))) return;
+    await mutate('unlockAttempt', { id: b.dataset.id });
+    toast('Kunci dibuka. Siswa dapat melanjutkan ujian.');
+    reloadModule();
+  },
+  rvLog: () => { const d = S.review; if (d) openViolLog(Object.assign({ user: d.user || { name: '' } }, d.attempt)); },
+  attLog: b => { const a = (S.mod.attempts || []).find(x => x.id === b.dataset.id); if (a) openViolLog(a); },
   qImport: () => openImportQuestions(),
   qEdit: b => openQuestionForm(S.questions.find(q => q.id === b.dataset.id)),
   qDel: async b => {
@@ -3201,8 +3628,8 @@ const A = {
     reloadModule();
   },
   resExport: () => {
-    const d = S.mod, rows = [['Nama', 'Kelas', 'Mulai', 'Selesai', 'Durasi', 'Terputus (kali)', 'Lama terputus', 'Poin', 'Nilai (maks ' + d.module.max_grade + ')']];
-    d.attempts.filter(a => a.status === 'finished').forEach(a => rows.push([a.user.name, a.user.kelas || '', fDT(a.started_at), fDT(a.finished_at), dur(a.time_used || a.finished_at - a.started_at), a.pause_count || 0, a.pause_count ? dur(a.pause_ms) : '', a.score + '/' + a.max_score, String(a.grade).replace('.', ',')]));
+    const d = S.mod, ex = !!d.exam, rows = [['Nama', 'Kelas', 'Mulai', 'Selesai', 'Durasi', 'Terputus (kali)', 'Lama terputus'].concat(ex ? ['Pelanggaran', 'Rincian pelanggaran'] : [], ['Poin', 'Nilai (maks ' + d.module.max_grade + ')'])];
+    d.attempts.filter(a => a.status === 'finished').forEach(a => rows.push([a.user.name, a.user.kelas || '', fDT(a.started_at), fDT(a.finished_at), dur(a.time_used || a.finished_at - a.started_at), a.pause_count || 0, a.pause_count ? dur(a.pause_ms) : ''].concat(ex ? [a.violations || 0, (a.vlog || []).filter(e => e.v).map(e => new Date(e.t).toLocaleTimeString('id-ID') + ' ' + (EXAM_LBL[e.type] || e.type)).join('; ')] : [], [a.score + '/' + a.max_score, String(a.grade).replace('.', ',')])));
     downloadFile('hasil-' + d.module.title.replace(/[^\w]+/g, '-').slice(0, 40) + '.csv', toCSV(rows));
   },
   pick: b => {
@@ -3225,6 +3652,10 @@ const A = {
   qPrev: () => { const A_ = S.att; A_.dir = 'in-l'; A_.i--; attCache(A_); renderAttempt(); scrollTo({ top: 0, behavior: 'smooth' }); },
   attSummary: () => { const A_ = S.att; A_.dir = 'in-r'; A_.summary = true; saveAttempt(); renderAttempt(); scrollTo({ top: 0, behavior: 'smooth' }); },
   resumeQuiz: b => resumeQuiz(b.dataset.id),
+  examGo: () => examGoNow(),
+  examBack: () => examBackNow(),
+  examCheck: () => { const st = $('.exam-ov .att-off-st'); if (st) st.innerHTML = '<span class="spinner"></span> Memeriksa…'; hb(); },
+  examTakeover: b => { const id = b.dataset.id; S.resumeOnly = id; go('/attempt/' + id, true); if (S.path === '/attempt/' + id) pageAttempt(id); },
   attRetry: () => { const A_ = S.att; if (!A_) return; const st = $('.att-off-st'); if (st) st.innerHTML = '<span class="spinner"></span> Menghubungkan…'; hb(); },
   attEnd: async b => {
     if (!(await ask({ title: 'Akhiri percobaan siswa?', message: 'Percobaan dinilai dengan jawaban terakhir yang sudah tersimpan di server. Siswa tidak bisa melanjutkannya lagi.', ok: 'Akhiri & nilai', danger: true }))) return;
@@ -3341,7 +3772,7 @@ function bindGlobal() {
     if (g && !g.disabled) { e.preventDefault(); go(g.dataset.go); }
   });
   document.addEventListener('keydown', e => {
-    if ((e.metaKey || e.ctrlKey) && e.key && e.key.toLowerCase() === 'k' && S.user) { e.preventDefault(); openSpot(); }
+    if ((e.metaKey || e.ctrlKey) && e.key && e.key.toLowerCase() === 'k' && S.user) { e.preventDefault(); if (!document.documentElement.classList.contains('exam-on')) openSpot(); }
     else if (e.key === 'Escape') {
       if (S.menu) closeMenu();
       else if (S.overlays.length) S.overlays[S.overlays.length - 1].close();

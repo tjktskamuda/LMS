@@ -908,7 +908,13 @@ async function readTable(file) {
   }
   return parseCSV(await file.text());
 }
-function toCSV(rows) { return rows.map(r => r.map(c => { const s = String(c == null ? '' : c); return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(',')).join('\r\n'); }
+function toCSV(rows) {
+  return rows.map(r => r.map(c => {
+    let s = String(c == null ? '' : c);
+    if (/^[=+@\t\r]/.test(s) || /^-[^\d]/.test(s)) s = "'" + s;   // cegah rumus Excel tersisip dari nama/isian pengguna (mis. =HYPERLINK(...))
+    return /[",;\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }).join(',')).join('\r\n');
+}
 function downloadFile(name, content, mime) {
   downloadBlob(name, new Blob(['\uFEFF' + content], { type: mime || 'text/csv;charset=utf-8' }));
 }

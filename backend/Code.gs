@@ -29,7 +29,7 @@ const CONFIG = {
   MAX_UPLOAD_MB: 10,                // batas ukuran per berkas
   QUIZ_HEARTBEAT_SEC: 30,           // kuis berwaktu: perangkat siswa melapor ke server tiap N detik
   QUIZ_OFFLINE_SEC: 75,             // tanpa laporan lebih dari N detik = dianggap terputus (waktu dijeda)
-  VERSION: '2.5.2'
+  VERSION: '2.6.0'
 };
 
 /* ---------------------------------------------------------------------------
@@ -1227,6 +1227,7 @@ function attOut_(t, users, cfg) {
     time_used: num_(t.time_used), pause_count: num_(t.pause_count), pause_ms: num_(t.pause_ms),
     violations: num_(t.violations), strikes: num_(t.strikes), locked: bool_(t.locked)
   };
+  if (users) o.qn = json_(t.layout, []).length;      // jumlah soal (untuk guru: rata-rata detik per soal)
   if (users) o.vlog = json_(t.vlog, []);            // log pelanggaran: hanya untuk guru
   if (cfg && t.status === 'inprogress') {
     o.last_seen = num_(t.last_seen) || num_(t.started_at);
@@ -1385,26 +1386,42 @@ function actMoveQuestion_(ctx, p) {
   return true;
 }
 
+/** Nilai 0–1 untuk satu soal. Hanya bentuk jawaban yang sah yang dinilai, sehingga kiriman buatan
+ *  (mis. opsi yang diulang-ulang, larik di soal pilihan ganda) tidak bisa menaikkan nilai. */
 function scoreQuestion_(q, a) {
   const ans = json_(q.answer, null);
   if (a === undefined || a === null || a === '') return 0;
+  const isIdx = function (x) { return typeof x === 'number' && isFinite(x) && Math.floor(x) === x && x >= 0; };
+  let fr = 0;
   switch (q.type) {
-    case 'mc': return Number(a) === Number(ans) ? 1 : 0;
-    case 'tf': return (a === true || a === 'true') === (ans === true) ? 1 : 0;
+    case 'mc': fr = isIdx(a) && a === Number(ans) ? 1 : 0; break;
+    case 'tf': {
+      const v = a === true || a === 'true' ? true : a === false || a === 'false' ? false : null;
+      fr = v !== null && v === (ans === true || ans === 'true') ? 1 : 0;
+      break;
+    }
     case 'multi': {
-      const sel = Array.isArray(a) ? a.map(Number) : [], right = (ans || []).map(Number);
+      if (!Array.isArray(a)) return 0;
+      const n = json_(q.options, []).length, right = (Array.isArray(ans) ? ans : []).map(Number), seen = {};
       if (!right.length) return 0;
       let ok = 0, bad = 0;
-      sel.forEach(function (i) { if (right.indexOf(i) >= 0) ok++; else bad++; });
-      return Math.max(0, (ok - bad) / right.length);
+      a.forEach(function (i) {
+        if (!isIdx(i) || i >= n || seen[i]) return;      // opsi ganda/di luar daftar diabaikan
+        seen[i] = 1;
+        if (right.indexOf(i) >= 0) ok++; else bad++;
+      });
+      fr = (ok - bad) / right.length;
+      break;
     }
     case 'short': {
+      if (typeof a !== 'string' && typeof a !== 'number') return 0;
       const norm = function (s) { return str_(s).trim().toLowerCase().replace(/\s+/g, ' '); };
       const v = norm(a);
-      return (ans || []).some(function (x) { return norm(x) === v; }) ? 1 : 0;
+      fr = v && (Array.isArray(ans) ? ans : []).some(function (x) { return norm(x) === v; }) ? 1 : 0;
+      break;
     }
   }
-  return 0;
+  return Math.max(0, Math.min(1, fr || 0));
 }
 
 function cleanAnswers_(a) {
@@ -1412,7 +1429,7 @@ function cleanAnswers_(a) {
   if (a && typeof a === 'object') {
     Object.keys(a).slice(0, 500).forEach(function (k) {
       const v = a[k];
-      if (Array.isArray(v)) o[k] = v.slice(0, 20).map(Number);
+      if (Array.isArray(v)) o[k] = v.slice(0, 20).map(Number).filter(function (x, i, arr) { return isFinite(x) && arr.indexOf(x) === i; });
       else if (typeof v === 'boolean' || typeof v === 'number') o[k] = v;
       else if (v !== null && v !== undefined) o[k] = str_(v).slice(0, 1000);
     });
@@ -1431,7 +1448,8 @@ function finishAttemptInternal_(t, m, qs, answers, extra) {
     max += pts;
     score += pts * scoreQuestion_(q, answers[q.id]);
   });
-  const grade = max ? round2_(score / max * num_(m.max_grade, 100)) : 0;
+  score = Math.min(score, max);
+  const grade = max ? round2_(Math.min(1, score / max) * num_(m.max_grade, 100)) : 0;
   DB.update('Attempts', t.id, Object.assign({ answers: JSON.stringify(answers), finished_at: now_(), score: round2_(score), max_score: round2_(max), grade: grade, status: 'finished' }, extra || {}));
   if (!bool_(t.preview)) markComplete_(m.id, t.user_id);
 }
@@ -1466,6 +1484,116 @@ function attemptClock_(t, now, awayMs, netLost) {
     if (d - counted > 1000) { pc += 1; pm += d - counted; }
   }
   return { time_used: used, last_seen: now, pause_count: pc, pause_ms: pm, left_at: '' };
+}
+
+/* --- Ujian: membedakan "terputus sendirian" dari gangguan bersama ------------------------------
+ * Jeda waktu dibuat untuk gangguan listrik/router di lab: semua peserta terputus bersamaan.
+ * Tanpa pemeriksaan ini, siswa bisa sengaja memutus Wi-Fi-nya sendiri (waktu dijeda), lalu mengerjakan
+ * di luar waktu (mis. memotret soal & mencari jawaban di HP) — nilai tinggi dengan "waktu pengerjaan" singkat.
+ * Server mencatat kapan setiap peserta ujian melapor (per menit, di CacheService). Saat seorang siswa kembali
+ * dari jeda, bagian jeda ketika sebagian besar peserta lain tetap online DIHITUNG sebagai waktu pengerjaan
+ * dan, bila ≥ 2 menit, dicatat sebagai pelanggaran. Bagian ketika peserta lain ikut terputus tetap dijeda. */
+const EXAM_SEEN_TTL = 21600;   // 6 jam (batas CacheService)
+function examSeen_(m, t, now) {
+  if (bool_(t.preview)) return;
+  try {
+    const c = CacheService.getScriptCache(), k = 'xp_' + m.id + '_' + Math.floor(now / 60000);
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(1500)) return;
+    try {
+      let o = {};
+      try { o = JSON.parse(c.get(k) || '{}') || {}; } catch (e) { o = {}; }
+      const a = o[t.user_id] || [];
+      if (a.length && now - a[a.length - 1] < 15000) return;     // cukup satu catatan per 15 detik
+      a.push(now); o[t.user_id] = a.slice(-3);
+      c.put(k, JSON.stringify(o), EXAM_SEEN_TTL);
+    } finally { lock.releaseLock(); }
+  } catch (e) { /* hanya bantuan; tidak boleh mengganggu ujian */ }
+}
+/** Berapa ms dari jeda [last, now] yang terjadi saat sebagian besar peserta lain tetap online. null = tidak bisa dibandingkan. */
+function soloOfflineMs_(mid, uid, last, now) {
+  try {
+    const c = CacheService.getScriptCache(), b0 = Math.floor((last - 120000) / 60000), b1 = Math.floor(now / 60000);
+    if (b1 - b0 > 400) return null;
+    const keys = [];
+    for (let b = b0; b <= b1; b++) keys.push('xp_' + mid + '_' + b);
+    let got = {};
+    if (c.getAll) got = c.getAll(keys) || {};
+    else keys.forEach(function (k) { got[k] = c.get(k); });
+    const ts = {};
+    keys.forEach(function (k) {
+      let o = {};
+      try { o = JSON.parse(got[k] || '{}') || {}; } catch (e) { o = {}; }
+      Object.keys(o).forEach(function (u) { if (u !== uid) ts[u] = (ts[u] || []).concat(o[u]); });
+    });
+    // pembanding: peserta yang masih melapor sesaat sebelum siswa ini terputus
+    const peers = Object.keys(ts).filter(function (u) { return ts[u].some(function (x) { return x >= last - 120000 && x <= last + 20000; }); });
+    if (peers.length < 2) return null;
+    // laporan dihitung "online" hanya bila peserta itu juga melapor ≤ 75 detik sebelumnya (tersambung terus),
+    // jadi laporan pertama sesudah gangguan bersama (semua menyambung kembali hampir bersamaan) tidak dihitung.
+    const live = {};
+    peers.forEach(function (u) {
+      const a = ts[u].slice().sort(function (x, y) { return x - y; });
+      live[u] = a.filter(function (x, i) { return i > 0 && x - a[i - 1] <= 75000; });
+    });
+    // mulai 45 dtk setelah laporan terakhir siswa ini: sebelum itu ia memang belum wajib melapor lagi,
+    // dan gangguan bersama bisa saja baru mulai setelah sebagian peserta lain sempat melapor.
+    let solo = 0;
+    for (let w = last + 45000; w < now; w += 60000) {
+      const we = Math.min(now, w + 60000);
+      if (we - w < 30000) break;
+      const on = peers.filter(function (u) { return live[u].some(function (x) { return x > w && x <= we; }); }).length;
+      if (on / peers.length >= 0.5) solo += we - w;
+    }
+    return Math.min(solo, now - last);
+  } catch (e) { return null; }
+}
+function durTxt_(ms) {
+  const s = Math.round(ms / 1000), m = Math.floor(s / 60);
+  return m >= 60 ? Math.floor(m / 60) + ' jam ' + (m % 60) + ' menit' : m ? m + ' menit' + (s % 60 ? ' ' + (s % 60) + ' detik' : '') : s + ' detik';
+}
+/** Jam percobaan + (untuk ujian) pemeriksaan terputus sendirian. Mengembalikan { clk, ev }. */
+function clockFor_(t, m, cfg, now, awayMs, netLost) {
+  const clk = attemptClock_(t, now, awayMs, netLost), out = { clk: clk, ev: null };
+  if (!isExam_(m) || bool_(t.preview)) return out;
+  const paused = num_(clk.pause_ms) - num_(t.pause_ms);
+  if (paused <= 1000) return out;
+  const last = num_(t.last_seen) || num_(t.started_at), gap = Math.max(0, now - last);
+  const solo = soloOfflineMs_(m.id, t.user_id, last, now);
+  if (solo === null) {
+    out.ev = { t: last, type: 'pause', d: 'Terputus ' + durTxt_(gap) + ' — waktu dijeda (peserta lain terlalu sedikit untuk dibandingkan)' };
+    return out;
+  }
+  const add = Math.min(paused, solo), still = paused - add;
+  if (add > 0) {
+    clk.time_used = num_(clk.time_used) + add;
+    clk.pause_ms = num_(t.pause_ms) + still;
+    if (still <= 1000) { clk.pause_count = num_(t.pause_count); clk.pause_ms = num_(t.pause_ms); }
+  }
+  if (add >= 120000 && add >= 0.6 * gap) out.ev = { t: last, type: 'offline', d: 'Terputus ' + durTxt_(gap) + ' sendirian saat peserta lain tetap online — waktu tetap dihitung', v: 1 };
+  else if (still > 1000) out.ev = { t: last, type: 'outage', d: 'Gangguan bersama ' + durTxt_(still) + ' (listrik/jaringan) — waktu dijeda' + (add >= 1000 ? '; ' + durTxt_(add) + ' tetap dihitung' : '') };
+  else if (add >= 1000) out.ev = { t: last, type: 'pause', d: 'Terputus ' + durTxt_(gap) + ' saat peserta lain online — waktu tetap dihitung' };
+  return out;
+}
+/** Catat entri dari server ke log ujian (patch diubah). Pelanggaran ikut dihitung; 'submit' = harus dikirim otomatis. */
+function examServerEvent_(t, cfg, patch, ev, now, allowAction) {
+  if (!ev) return '';
+  const log = json_(patch.vlog !== undefined ? patch.vlog : t.vlog, []);
+  log.push(ev);
+  let res = '';
+  if (ev.v) {
+    const locked = bool_(patch.locked !== undefined ? patch.locked : t.locked);
+    let strikes = num_(patch.strikes !== undefined ? patch.strikes : t.strikes);
+    if (!locked) strikes++;
+    patch.violations = num_(patch.violations !== undefined ? patch.violations : t.violations) + 1;
+    patch.strikes = strikes;
+    if (allowAction && !locked && !bool_(t.preview) && strikes >= num_(cfg.exam_max, 3)) {
+      if (cfg.exam_action === 'lock') { patch.locked = '1'; log.push({ t: now, type: 'lock' }); }
+      else if (cfg.exam_action === 'submit') { log.push({ t: now, type: 'submit', d: 'Dikirim otomatis karena melewati batas pelanggaran' }); res = 'submit'; }
+    }
+  }
+  patch.vlog = JSON.stringify(log.slice(-300));
+  return res;
 }
 
 function attemptRemaining_(cfg, used) { return num_(cfg.time_limit) * 60000 - used; }
@@ -1511,7 +1639,7 @@ function actStartAttempt_(ctx, p) {
       let o = [];
       for (let k = 0; k < n; k++) o.push(k);
       if (cfg.shuffle_options && (q.type === 'mc' || q.type === 'multi')) o = shuffle_(o);
-      return { q: id, o: o };
+      return { q: id, o: o, p: 1 };   // p: siswa hanya menerima nomor urut tampilan opsi (lihat clientOpts_)
     });
     const t0 = now_();
     att = DB.insert('Attempts', {
@@ -1523,13 +1651,15 @@ function actStartAttempt_(ctx, p) {
   } else {
     if (isExam_(m)) att = examTakeover_(att, cfg, p.session);   // satu perangkat: sesi terbaru mengambil alih
     if (pauseMode_(cfg)) {
-      // melanjutkan percobaan: waktu selama terputus tidak dihitung
-      const clk = attemptClock_(att, now_());
-      if (attemptRemaining_(cfg, clk.time_used) <= -QUIZ_GRACE_MS) {
+      // melanjutkan percobaan: waktu selama gangguan listrik/jaringan tidak dihitung
+      const now = now_(), ck = clockFor_(att, m, cfg, now), clk = ck.clk;
+      const act = examServerEvent_(att, cfg, clk, ck.ev, now, true);
+      if (attemptRemaining_(cfg, clk.time_used) <= -QUIZ_GRACE_MS || act === 'submit') {
         finishAttemptInternal_(att, m, qs, json_(att.answers, {}), clk);
         return { finished: true, attempt_id: att.id };
       }
       att = DB.update('Attempts', att.id, clk);
+      if (isExam_(m)) examSeen_(m, att, now);
     }
   }
   if (isExam_(m) && !isT) examFlag_(u.id, m, att.id);
@@ -1537,14 +1667,15 @@ function actStartAttempt_(ctx, p) {
   const questions = json_(att.layout, []).map(function (L) {
     const q = qById2[L.q];
     if (!q) return null;
-    const opts = json_(q.options, []);
     return {
       id: q.id, type: q.type, text: q.text, points: num_(q.points, 1),
-      options: (q.type === 'mc' || q.type === 'multi') ? layoutOpts_(L.o, opts) : []
+      options: (q.type === 'mc' || q.type === 'multi') ? clientOpts_(L, json_(q.options, [])) : []
     };
   }).filter(Boolean);
+  const info = attemptInfo_(att, m, cfg);
+  info.answers = ansToClient_(att, qById2, info.answers);
   return {
-    attempt: attemptInfo_(att, m, cfg),
+    attempt: info,
     quiz: { id: m.id, title: m.title, course_id: m.course_id, course: a.course.fullname, time_limit: cfg.time_limit || 0, exam: examInfo_(cfg) },
     questions: questions
   };
@@ -1555,6 +1686,50 @@ function layoutOpts_(order, opts) {
   const seen = {}, out = [];
   (Array.isArray(order) ? order : []).forEach(function (i) { i = Number(i); if (i >= 0 && i < opts.length && !seen[i]) { seen[i] = 1; out.push({ i: i, t: opts[i] }); } });
   for (let i = 0; i < opts.length; i++) if (!seen[i]) out.push({ i: i, t: opts[i] });
+  return out;
+}
+
+/* Opsi untuk siswa yang sedang mengerjakan. Pada percobaan baru (L.p) siswa hanya menerima nomor urut
+ * tampilan (0,1,2,…), bukan nomor opsi asli yang ditulis guru — kalau tidak, urutan asli (mis. guru selalu
+ * menulis jawaban benar di opsi pertama sebelum diacak) bisa dibaca dari data halaman. Server yang
+ * menerjemahkan kembali ke nomor asli saat menyimpan, jadi kunci & penilaian tetap memakai nomor asli. */
+function clientOpts_(L, opts) {
+  const list = layoutOpts_(L.o, opts);
+  return L.p ? list.map(function (x, k) { return { i: k, t: x.t }; }) : list;
+}
+function ansMaps_(att, qById) {
+  const maps = {};
+  json_(att.layout, []).forEach(function (L) {
+    const q = qById[L.q];
+    if (!q || !L.p || (q.type !== 'mc' && q.type !== 'multi')) return;
+    maps[q.id] = layoutOpts_(L.o, json_(q.options, [])).map(function (x) { return x.i; });   // posisi → nomor asli
+  });
+  return maps;
+}
+/** Jawaban dari siswa (nomor urut tampilan) → nomor asli. Jawaban untuk soal di luar percobaan dibuang. */
+function ansFromClient_(att, qs, answers) {
+  const qById = mapBy_(qs, 'id'), maps = ansMaps_(att, qById), inAtt = {}, out = {};
+  json_(att.layout, []).forEach(function (L) { inAtt[L.q] = 1; });
+  Object.keys(answers || {}).forEach(function (id) {
+    if (!inAtt[id] || !qById[id]) return;
+    const v = answers[id], mp = maps[id];
+    if (!mp) { out[id] = v; return; }
+    const conv = function (x) { return typeof x === 'number' && x >= 0 && x < mp.length && Math.floor(x) === x ? mp[x] : null; };
+    if (qById[id].type === 'mc') { const c = conv(v); if (c !== null) out[id] = c; }
+    else if (Array.isArray(v)) out[id] = v.map(conv).filter(function (x) { return x !== null; });
+  });
+  return out;
+}
+/** Jawaban tersimpan (nomor asli) → nomor urut tampilan untuk dikirim kembali ke siswa. */
+function ansToClient_(att, qById, answers) {
+  const maps = ansMaps_(att, qById), out = {};
+  Object.keys(answers || {}).forEach(function (id) {
+    const v = answers[id], mp = maps[id];
+    if (!mp) { out[id] = v; return; }
+    const back = function (x) { const k = mp.indexOf(Number(x)); return k >= 0 ? k : null; };
+    if (Array.isArray(v)) out[id] = v.map(back).filter(function (x) { return x !== null; });
+    else { const k = back(v); if (k !== null) out[id] = k; }
+  });
   return out;
 }
 
@@ -1585,8 +1760,10 @@ function actSaveAttempt_(ctx, p) {
   if (exam && examKicked_(t, cfg, p.session)) return { kicked: true };
   if (exam && bool_(t.locked)) p.answers = undefined;     // ujian terkunci: jawaban tidak bisa diubah
   if (exam && !bool_(t.preview)) examFlag_(t.user_id, m, t.id);
+  let qs = null;
+  const getQs = function () { return qs || (qs = DB.where('Questions', function (q) { return q.module_id === m.id; })); };
   if (p.answers !== undefined && p.answers !== null) {
-    const ans = JSON.stringify(cleanAnswers_(p.answers));
+    const ans = JSON.stringify(ansFromClient_(t, getQs(), cleanAnswers_(p.answers)));
     if (ans.length > 45000) fail_('Jawaban terlalu panjang.');
     patch.answers = ans; patch.saved_at = now;
   }
@@ -1594,17 +1771,25 @@ function actSaveAttempt_(ctx, p) {
     const rec = patch.answers ? DB.update('Attempts', t.id, patch) : t;
     return exam ? Object.assign({ saved: now }, examStatus_(rec, cfg)) : { saved: now };
   }
-  const clk = attemptClock_(t, now, p.away, !!p.net_lost), left = attemptRemaining_(cfg, clk.time_used);
+  const ck = clockFor_(t, m, cfg, now, p.away, !!p.net_lost), clk = ck.clk, left = attemptRemaining_(cfg, clk.time_used);
+  const act = examServerEvent_(t, cfg, patch, ck.ev, now, true);
   if (left <= -QUIZ_GRACE_MS) {               // waktu sudah habis → nilai dengan jawaban tersimpan sebelumnya
-    const qs = DB.where('Questions', function (q) { return q.module_id === m.id; });
-    finishAttemptInternal_(t, m, qs, json_(t.answers, {}), clk);
+    finishAttemptInternal_(t, m, getQs(), json_(t.answers, {}), Object.assign(clk, pick_(patch, ['vlog', 'violations', 'strikes', 'locked'])));
+    examSeen_(m, t, now);
     return { finished: true, attempt_id: t.id };
   }
+  if (act === 'submit') {
+    finishAttemptInternal_(t, m, getQs(), json_(patch.answers || t.answers, {}), Object.assign(clk, pick_(patch, ['vlog', 'violations', 'strikes'])));
+    return { finished: true, attempt_id: t.id, auto: true };
+  }
   const rec = DB.update('Attempts', t.id, Object.assign(patch, clk));
+  if (exam) examSeen_(m, t, now);
   const out = { saved: now, remaining: Math.max(0, left), now: now };
   if (exam) Object.assign(out, examStatus_(rec, cfg));
   return out;
 }
+
+function pick_(o, keys) { const r = {}; keys.forEach(function (k) { if (o[k] !== undefined) r[k] = o[k]; }); return r; }
 
 function actFinishAttempt_(ctx, p) {
   const t = ownAttempt_(ctx.user, p.id);
@@ -1615,10 +1800,12 @@ function actFinishAttempt_(ctx, p) {
     if (bool_(t.locked) && !p.auto) fail_('Ujian dikunci karena pelanggaran. Minta guru/pengawas membuka kunci.');
   }
   const qs = DB.where('Questions', function (q) { return q.module_id === m.id; });
-  let answers = p.answers ? cleanAnswers_(p.answers) : json_(t.answers, {}), extra = null;
+  let answers = p.answers ? ansFromClient_(t, qs, cleanAnswers_(p.answers)) : json_(t.answers, {}), extra = null;
   if (isExam_(m) && bool_(t.locked)) answers = json_(t.answers, {});        // terkunci & waktu habis: pakai jawaban tersimpan
   if (pauseMode_(cfg)) {
-    extra = attemptClock_(t, now_());
+    const now = now_(), ck = clockFor_(t, m, cfg, now);
+    extra = ck.clk;
+    examServerEvent_(t, cfg, extra, ck.ev, now, false);     // dicatat; ujian tetap dikirim
     if (attemptRemaining_(cfg, extra.time_used) <= -QUIZ_GRACE_MS) answers = json_(t.answers, {});   // kiriman terlambat tidak diterima
     extra.time_used = Math.min(extra.time_used, num_(cfg.time_limit) * 60000);
   }
@@ -1634,10 +1821,16 @@ function actLeaveAttempt_(ctx, p) {
   if (isExam_(m) && examKicked_(t, cfg, p.session)) return { kicked: true };
   if (isExam_(m) && bool_(t.locked)) p.answers = undefined;
   if (p.answers !== undefined && p.answers !== null) {
-    const ans = JSON.stringify(cleanAnswers_(p.answers));
+    const qs = DB.where('Questions', function (q) { return q.module_id === m.id; });
+    const ans = JSON.stringify(ansFromClient_(t, qs, cleanAnswers_(p.answers)));
     if (ans.length <= 45000) { patch.answers = ans; patch.saved_at = now; }
   }
-  if (pauseMode_(cfg)) Object.assign(patch, attemptClock_(t, now, p.away), { left_at: now });
+  if (pauseMode_(cfg)) {
+    const ck = clockFor_(t, m, cfg, now, p.away);
+    examServerEvent_(t, cfg, patch, ck.ev, now, false);
+    Object.assign(patch, ck.clk, { left_at: now });
+    if (isExam_(m)) examSeen_(m, t, now);
+  }
   if (Object.keys(patch).length) DB.update('Attempts', t.id, patch);
   return { ok: true };
 }
@@ -1662,7 +1855,8 @@ const EXAM_EVENTS = {
   tab2: 'Ujian dibuka di dua tab sekaligus',
   device: 'Ujian dibuka di perangkat lain saat masih aktif'
 };
-const EXAM_INFO_EVENTS = { lock: 1, unlock: 1, resume: 1, start: 1, submit: 1 };   // dicatat, bukan pelanggaran
+const EXAM_INFO_EVENTS = { lock: 1, unlock: 1, resume: 1, start: 1, submit: 1, outage: 1, pause: 1 };   // dicatat, bukan pelanggaran
+// 'offline' (terputus sendirian saat peserta lain online) dicatat oleh server, bukan dikirim perangkat siswa.
 
 function isExam_(m) { return !!(m && m.type === 'quiz' && json_(m.config, {}).exam); }
 function examInfo_(cfg) {
@@ -1749,14 +1943,24 @@ function actExamEvent_(ctx, p) {
         log.push({ t: now, type: 'submit', d: 'Dikirim otomatis karena melewati batas pelanggaran' });
         patch.vlog = JSON.stringify(log.slice(-300));
         const qs = DB.where('Questions', function (q) { return q.module_id === m.id; });
-        const extra = pauseMode_(cfg) ? attemptClock_(t, now) : {};
+        const extra = {};
+        if (pauseMode_(cfg)) { const ck = clockFor_(t, m, cfg, now); Object.assign(extra, ck.clk); examServerEvent_(t, cfg, patch, ck.ev, now, false); }
         finishAttemptInternal_(t, m, qs, json_(t.answers, {}), Object.assign(extra, patch));
         return { finished: true, attempt_id: t.id, auto: true, violations: viol, strikes: strikes, max: num_(cfg.exam_max, 3) };
       }
     }
     patch.vlog = JSON.stringify(log.slice(-300));
   }
-  if (pauseMode_(cfg)) Object.assign(patch, attemptClock_(t, now));
+  if (pauseMode_(cfg)) {
+    const ck = clockFor_(t, m, cfg, now);
+    if (examServerEvent_(t, cfg, patch, ck.ev, now, true) === 'submit') {
+      const qs = DB.where('Questions', function (q) { return q.module_id === m.id; });
+      finishAttemptInternal_(t, m, qs, json_(t.answers, {}), Object.assign(ck.clk, patch));
+      return { finished: true, attempt_id: t.id, auto: true, violations: num_(patch.violations), strikes: num_(patch.strikes), max: num_(cfg.exam_max, 3) };
+    }
+    Object.assign(patch, ck.clk);
+    examSeen_(m, t, now);
+  }
   const rec = Object.keys(patch).length ? DB.update('Attempts', t.id, patch) : t;
   return Object.assign({ ok: true, preview: preview }, examStatus_(rec, cfg));
 }

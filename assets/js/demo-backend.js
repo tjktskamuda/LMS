@@ -131,6 +131,7 @@
   window.CacheService = { getScriptCache: function () { return {
     get: function (k) { var e = cacheStore[k]; if (!e || e.exp < Date.now()) return null; return e.v; },
     put: function (k, v, ttl) { cacheStore[k] = { v: String(v), exp: Date.now() + (ttl || 600) * 1000 }; },
+    getAll: function (keys) { var o = {}; (keys || []).forEach(function (k) { var e = cacheStore[k]; if (e && e.exp >= Date.now()) o[k] = e.v; }); return o; },
     remove: function (k) { delete cacheStore[k]; }
   }; } };
   window.LockService = { getScriptLock: function () { return { waitLock: function () {}, tryLock: function () { return true; }, releaseLock: function () {} }; } };

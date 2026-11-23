@@ -6,8 +6,8 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.5.2';
-const MIN_API = '2.5.2';
+const APP_VERSION = '2.6.0';
+const MIN_API = '2.6.0';
 const TAB_ID = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);   // identitas tab ini (mode ujian: satu perangkat/tab)   // versi Code.gs yang dibutuhkan semua fitur tampilan ini
 const markReady = () => { window.__LMS_READY = true; };
 
@@ -1233,7 +1233,7 @@ function renderDashboard(d, anim) {
 function serverOldHTML() {
   const v = S.settings && S.settings.version;
   if (DEMO || !v || !verLess(v, MIN_API)) return '';
-  return `<section class="server-old glass"><span class="so-ic">${ic('alert')}</span><div class="grow"><b>Code.gs di server masih v${esc(v)} — perlu diperbarui ke v${MIN_API}</b><p>Sebelum diperbarui, fitur & perbaikan terbaru belum aktif di server (kunci jawaban yang dimatikan benar-benar tidak dikirim ke siswa, mode ujian anti-curang, kuis lanjut setelah mati listrik/internet putus, impor siswa dikenali dari NISN). Salin Code.gs terbaru dari halaman Pasang, tempel di Apps Script, lalu Terapkan → Kelola deployment → Versi baru.</p></div><a class="btn btn-tinted btn-sm" href="setup.html" target="_blank" rel="noopener">${ic('link', 'sm')} Buka halaman Pasang</a></section>`;
+  return `<section class="server-old glass"><span class="so-ic">${ic('alert')}</span><div class="grow"><b>Code.gs di server masih v${esc(v)} — perlu diperbarui ke v${MIN_API}</b><p>Sebelum diperbarui, perbaikan keamanan terbaru belum aktif di server (celah ujian: memutus Wi-Fi sendiri untuk menghentikan waktu, kiriman jawaban buatan, dan kunci jawaban yang dimatikan masih terkirim ke siswa). Salin Code.gs terbaru dari halaman Pasang, tempel di Apps Script, lalu Terapkan → Kelola deployment → Versi baru.</p></div><a class="btn btn-tinted btn-sm" href="setup.html" target="_blank" rel="noopener">${ic('link', 'sm')} Buka halaman Pasang</a></section>`;
 }
 function openQuizHTML(list) {
   if (!list || !list.length) return '';
@@ -1587,7 +1587,7 @@ function openModuleForm(type, o) {
   if (type === 'quiz') {
     body += dates('Dibuka', 'Ditutup') + `<div class="row3">${fInput('time_limit', 'Batas waktu (menit)', m ? cfg.time_limit || 0 : asExam ? 90 : 30, { type: 'number', attrs: 'min="0" max="600"', hint: '0 = tanpa batas' })}${fInput('attempts', 'Kesempatan', m ? cfg.attempts || 0 : 1, { type: 'number', attrs: 'min="0" max="50"', hint: '0 = tak terbatas' })}${fInput('max_grade', 'Nilai maksimal', m ? m.max_grade : 100, { type: 'number', attrs: 'min="1" max="1000"' })}</div>
       <div class="row2">${fSelect('grade_method', 'Metode penilaian', Object.keys(GM).map(k => [k, GM[k]]), cfg.grade_method || 'highest')}${fInput('pick', 'Jumlah soal yang tampil', m ? cfg.pick || 0 : 0, { type: 'number', attrs: 'min="0" max="500"', hint: '0 = semua soal. Isi mis. 25 → tiap siswa mendapat 25 soal acak dari bank soal.' })}</div>
-      <div class="opt-stack">${fSwitch('shuffle', 'Acak urutan soal', 'Setiap siswa mendapat urutan soal berbeda.', m ? !!cfg.shuffle : asExam)}${fSwitch('shuffle_options', 'Acak urutan opsi jawaban', 'Untuk soal pilihan ganda.', m ? !!cfg.shuffle_options : true)}${fSwitch('review', 'Tampilkan kunci jawaban', 'Aktif: siswa melihat jawaban benar & tanda benar/salah per soal setelah selesai. Mati: siswa hanya melihat nilai akhir dan jawabannya sendiri.', m ? cfg.review !== false : !asExam)}${fSwitch('pause_offline', 'Jeda waktu saat internet terputus', 'Untuk kuis berbatas waktu: sisa waktu tidak berkurang selama koneksi siswa putus, lalu siswa melanjutkan dengan soal yang sama.', cfg.pause_offline !== false)}</div>
+      <div class="opt-stack">${fSwitch('shuffle', 'Acak urutan soal', 'Setiap siswa mendapat urutan soal berbeda.', m ? !!cfg.shuffle : asExam)}${fSwitch('shuffle_options', 'Acak urutan opsi jawaban', 'Untuk soal pilihan ganda.', m ? !!cfg.shuffle_options : true)}${fSwitch('review', 'Tampilkan kunci jawaban', 'Aktif: siswa melihat jawaban benar & tanda benar/salah per soal setelah selesai. Mati: siswa hanya melihat nilai akhir dan jawabannya sendiri.', m ? cfg.review !== false : !asExam)}${fSwitch('pause_offline', 'Jeda waktu saat internet terputus', 'Untuk kuis berbatas waktu: sisa waktu tidak berkurang selama koneksi siswa putus, lalu siswa melanjutkan dengan soal yang sama.' + (asExam ? ' Pada ujian, jeda hanya untuk gangguan bersama (listrik/router mati); siswa yang terputus sendirian saat peserta lain online tetap dihitung waktunya dan dicatat sebagai pelanggaran.' : ''), cfg.pause_offline !== false)}</div>
       ${asExam ? examFormHTML(cfg) : ''}`;
   }
   if (type === 'forum') body += fSwitch('teacher_only', 'Hanya guru yang dapat memulai diskusi', 'Cocok untuk forum pengumuman. Siswa tetap dapat membalas.', !!cfg.teacher_only);
@@ -1998,7 +1998,7 @@ function quizInfoGroup(d) {
     <div class="gi"><span class="k">Dibuka</span><span class="v">${m.open_date ? fDT(m.open_date) : 'Kapan saja'}</span></div>
     <div class="gi"><span class="k">Ditutup</span><span class="v">${m.due_date ? fDT(m.due_date) : 'Tidak ditutup'}</span></div>
     <div class="gi"><span class="k">Batas waktu pengerjaan</span><span class="v">${c.time_limit ? c.time_limit + ' menit' : 'Tanpa batas'}</span></div>
-    ${c.time_limit ? `<div class="gi"><span class="k">Jika internet terputus</span><span class="v">${d.pauseOffline ? 'Waktu dijeda — lanjutkan dengan soal & sisa waktu yang sama' : 'Waktu tetap berjalan'}</span></div>` : ''}
+    ${c.time_limit ? `<div class="gi"><span class="k">Jika internet terputus</span><span class="v">${!d.pauseOffline ? 'Waktu tetap berjalan' : d.exam ? 'Gangguan listrik/jaringan bersama: waktu dijeda. Terputus sendirian saat peserta lain online: waktu tetap berjalan & dicatat' : 'Waktu dijeda — lanjutkan dengan soal & sisa waktu yang sama'}</span></div>` : ''}
     <div class="gi"><span class="k">Kesempatan mengerjakan</span><span class="v">${c.attempts ? c.attempts + ' kali' : 'Tak terbatas'}</span></div>
     <div class="gi"><span class="k">Metode penilaian</span><span class="v">${GM[c.grade_method] || GM.highest}</span></div>
     <div class="gi"><span class="k">Kunci jawaban setelah selesai</span><span class="v">${c.review !== false ? 'Ditampilkan' : 'Tidak ditampilkan — hanya nilai akhir'}</span></div>
@@ -2044,9 +2044,9 @@ async function loadQuizTab(tab) {
     const list = d.attempts.filter(a => a.status === 'finished'), live = d.attempts.filter(a => a.status === 'inprogress'), ex = !!d.exam;
     const who = a => `<div class="row" style="gap:8px">${av(a.user, 'xs')}<div><b style="font-size:13.5px">${esc(a.user.name)}</b><div class="faint" style="font-size:12px">${esc(a.user.kelas || '')}</div></div></div>`;
     const vio = a => a.violations ? `<button class="chip ${a.locked ? 'red' : 'orange'} click" data-act="attLog" data-id="${a.id}" title="Lihat log pelanggaran">${ic('alert', 'sm')} ${a.violations}${a.locked ? '' : ''}</button>` : '<span class="faint">0</span>';
-    const liveStatus = a => a.locked ? `<span class="chip red">${ic('lock', 'sm')} Terkunci</span>` : a.offline ? `<span class="chip orange">${ic('wifioff', 'sm')} Terputus · dijeda</span><div class="faint" style="font-size:12px;margin-top:3px">terakhir aktif ${short2(dur(a.idle_ms || 0))} lalu</div>` : '<span class="chip green">Online</span>';
+    const liveStatus = a => a.locked ? `<span class="chip red">${ic('lock', 'sm')} Terkunci</span>` : a.offline ? `<span class="chip orange">${ic('wifioff', 'sm')} ${ex ? 'Terputus' : 'Terputus · dijeda'}</span><div class="faint" style="font-size:12px;margin-top:3px">terakhir aktif ${short2(dur(a.idle_ms || 0))} lalu</div>` : '<span class="chip green">Online</span>';
     const liveHTML = live.length ? `<div class="live-att"><div class="live-h">${ic('clock', 'sm')} Sedang mengerjakan (${live.length})${ex ? `<span class="grow"></span><span class="faint live-auto">${ic('refresh', 'sm')} diperbarui otomatis</span>` : ''}</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Siswa</th><th>Status</th>${ex ? '<th>Pelanggaran</th>' : ''}<th>Sisa waktu</th><th></th></tr></thead><tbody>${live.map(a => `<tr class="${a.locked ? 'row-locked' : ''}"><td>${who(a)}</td><td>${liveStatus(a)}${a.pause_count ? `<div class="faint" style="font-size:12px;margin-top:3px">${pauseText(a)}</div>` : ''}</td>${ex ? `<td>${vio(a)}</td>` : ''}<td>${a.remaining != null ? fmtLeft(a.remaining) : '—'}</td><td class="num nowrap">${a.locked ? `<button class="btn btn-primary btn-sm" data-act="attUnlock" data-id="${a.id}">${ic('lock', 'sm')} Buka kunci</button>` : ''}<button class="btn btn-plain btn-sm" data-act="attEnd" data-id="${a.id}">Akhiri & nilai</button></td></tr>`).join('')}</tbody></table></div></div>` : '';
-    box.innerHTML = liveHTML + (list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Siswa</th><th>Mulai</th><th>Durasi</th>${ex ? '<th>Pelanggaran</th>' : ''}<th class="num">Poin</th><th class="num">Nilai</th><th></th></tr></thead><tbody>${list.map(a => `<tr><td>${who(a)}</td><td>${fDT(a.started_at)}</td><td>${dur(a.time_used || a.finished_at - a.started_at)}${a.pause_count ? `<div class="chip orange" style="margin-top:4px" title="Waktu selama terputus tidak dihitung">${ic('wifioff', 'sm')} ${pauseText(a)}</div>` : ''}</td>${ex ? `<td>${vio(a)}</td>` : ''}<td class="num">${fNum(a.score)}/${fNum(a.max_score)}</td><td class="num"><span class="gcell ${gClass(a.grade / d.module.max_grade * 100)}">${fNum(a.grade)}</span></td><td class="num nowrap"><button class="btn btn-plain btn-sm" data-go="/review/${a.id}">Tinjau</button><button class="btn btn-plain btn-icon btn-sm" data-act="attDel" data-id="${a.id}" aria-label="Hapus percobaan" style="color:var(--red)">${ic('trash', 'sm')}</button></td></tr>`).join('')}</tbody></table></div>` : live.length ? '' : emptyHTML('clock', 'Belum ada percobaan', 'Hasil akan muncul setelah siswa menyelesaikan kuis.'));
+    box.innerHTML = liveHTML + (list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Siswa</th><th>Mulai</th><th>Durasi</th>${ex ? '<th>Pelanggaran</th>' : ''}<th class="num">Poin</th><th class="num">Nilai</th><th></th></tr></thead><tbody>${list.map(a => `<tr><td>${who(a)}</td><td>${fDT(a.started_at)}</td><td>${durCellHTML(a)}</td>${ex ? `<td>${vio(a)}</td>` : ''}<td class="num">${fNum(a.score)}/${fNum(a.max_score)}</td><td class="num"><span class="gcell ${gClass(a.grade / d.module.max_grade * 100)}">${fNum(a.grade)}</span></td><td class="num nowrap"><button class="btn btn-plain btn-sm" data-go="/review/${a.id}">Tinjau</button><button class="btn btn-plain btn-icon btn-sm" data-act="attDel" data-id="${a.id}" aria-label="Hapus percobaan" style="color:var(--red)">${ic('trash', 'sm')}</button></td></tr>`).join('')}</tbody></table></div>` : live.length ? '' : emptyHTML('clock', 'Belum ada percobaan', 'Hasil akan muncul setelah siswa menyelesaikan kuis.'));
     if (ex) examMonitor(d.module.id);
     return;
   }
@@ -2055,6 +2055,16 @@ async function loadQuizTab(tab) {
   drawQuestions();
 }
 function pauseText(a) { return `Terputus ${a.pause_count}× · ${dur(a.pause_ms)}`; }
+/* Durasi untuk guru: waktu yang dihitung, total mulai–selesai (bila beda), dan rata-rata detik per soal. */
+function attWall(a) { return Math.max(0, (a.finished_at || 0) - (a.started_at || 0)); }
+function attUsed(a) { return a.time_used || attWall(a); }
+function attPace(a) { return a.qn ? attUsed(a) / 1000 / a.qn : 0; }
+function durCellHTML(a) {
+  const used = attUsed(a), wall = attWall(a), pace = attPace(a), fast = a.qn >= 10 && pace > 0 && pace < 20;
+  return `${dur(used)}${wall - used > 120000 ? `<div class="faint" style="font-size:12px;margin-top:2px" title="Dari mulai sampai selesai, termasuk saat terputus">total ${dur(wall)} (mulai–selesai)</div>` : ''}`
+    + (pace ? `<div class="${fast ? 'chip orange' : 'faint'}" style="font-size:12px;margin-top:3px" title="Rata-rata waktu per soal">${fast ? ic('alert', 'sm') + ' ' : ''}±${Math.round(pace)} dtk/soal</div>` : '')
+    + (a.pause_count ? `<div class="chip orange" style="margin-top:4px" title="Waktu selama gangguan bersama tidak dihitung">${ic('wifioff', 'sm')} ${pauseText(a)}</div>` : '');
+}
 /** Ujian: tab Hasil diperbarui otomatis tiap 10 detik agar guru/pengawas melihat status terkini. */
 function examMonitor(mid) {
   clearTimeout(S.exMon);
@@ -2475,7 +2485,7 @@ async function hb(fromInterval) {
     if (netLost) { A.netLost = false; A.retAt = 0; }
     A.away = Math.max(0, A.away - away);
     if (r && r.kicked) { examKicked(A); return; }
-    if (r && r.finished) { attOver(A, 'Waktu kuis sudah habis. Jawaban terakhir yang tersimpan sudah dikirim.'); return; }
+    if (r && r.finished) { attOver(A, r.auto ? 'Ujian dikirim otomatis karena melewati batas pelanggaran.' : 'Waktu kuis sudah habis. Jawaban terakhir yang tersimpan sudah dikirim.'); return; }
     if (A.ex && r && r.max) examApply(A, r);
     if (A.pm && r && r.remaining != null) { A.left = r.remaining; A.syncAt = Date.now(); A.stale = false; A.shown = null; }
     if (A.offline) attOnline(A);
@@ -2527,8 +2537,8 @@ function attOfflineUI(A) {
   }
   el.innerHTML = lock
     ? `<div class="att-off-card glass thick"><div class="aic">${ic('wifioff', 'lg')}</div><h3>Koneksi internet terputus</h3>
-      <div class="att-off-time"><span>${ic('pause', 'sm')} Waktu dijeda</span><b id="offLeft">${fmtLeft(attLeft(A))}</b><small>sisa waktu</small></div>
-      <p>${A.pendingFinish ? 'Jawabanmu belum terkirim. Jawaban akan dikirim otomatis begitu internet kembali.' : 'Jawabanmu aman tersimpan di perangkat ini. Kuis berlanjut otomatis setelah internet kembali, dengan <b>soal dan sisa waktu yang sama</b>.'}</p>
+      <div class="att-off-time"><span>${A.d.quiz.exam ? ic('wifioff', 'sm') + ' Menunggu koneksi' : ic('pause', 'sm') + ' Waktu dijeda'}</span><b id="offLeft">${fmtLeft(attLeft(A))}</b><small>${A.d.quiz.exam ? 'sisa waktu saat terputus' : 'sisa waktu'}</small></div>
+      <p>${A.pendingFinish ? 'Jawabanmu belum terkirim. Jawaban akan dikirim otomatis begitu internet kembali.' : A.d.quiz.exam ? 'Jawabanmu aman tersimpan di perangkat ini. Bila listrik/jaringan sekolah yang terganggu, waktu dijeda dan ujian berlanjut dengan <b>soal dan sisa waktu yang sama</b>. Bila hanya perangkatmu yang terputus sementara peserta lain online, <b>waktu tetap berjalan</b> dan dicatat untuk pengawas.' : 'Jawabanmu aman tersimpan di perangkat ini. Kuis berlanjut otomatis setelah internet kembali, dengan <b>soal dan sisa waktu yang sama</b>.'}</p>
       <div class="att-off-st"><span class="spinner"></span> Mencoba menyambung kembali…</div>
       <button class="btn btn-primary w100" data-act="attRetry">${ic('refresh', 'sm')} Coba sambungkan sekarang</button>
       <p class="faint att-off-note">Boleh juga menutup halaman ini. Nanti buka lagi kuis ini, lalu ketuk <b>Lanjutkan percobaan</b>.</p></div>`
@@ -2547,7 +2557,8 @@ const EXAM_LBL = {
   paste: 'Mencoba menempel teks', devtools: 'Mencoba membuka alat pengembang (DevTools)', screenshot: 'Menekan tombol tangkapan layar',
   print: 'Mencoba mencetak halaman', leave: 'Mencoba membuka halaman lain di LMS', tab2: 'Ujian dibuka di dua tab sekaligus',
   device: 'Ujian dibuka di perangkat/tab lain saat masih aktif', lock: 'Ujian dikunci', unlock: 'Kunci dibuka oleh guru',
-  resume: 'Dilanjutkan (halaman dibuka lagi, mis. setelah mati listrik, atau di perangkat lain)', submit: 'Dikirim otomatis karena melewati batas pelanggaran', start: 'Ujian dimulai'
+  resume: 'Dilanjutkan (halaman dibuka lagi, mis. setelah mati listrik, atau di perangkat lain)', submit: 'Dikirim otomatis karena melewati batas pelanggaran', start: 'Ujian dimulai',
+  offline: 'Terputus sendirian saat peserta lain tetap online', outage: 'Gangguan listrik/jaringan bersama', pause: 'Terputus dari server'
 };
 const AWAY = { hidden: 1, blur: 1, fullscreen: 1, split: 1 };   // sering muncul bersamaan → dihitung satu kali
 const PLAT = (() => {
@@ -2990,7 +3001,9 @@ async function pageReview(id) {
       ${d.user ? `<div class="gi"><span class="k">Peserta</span><span class="v">${esc(d.user.name)}</span></div>` : ''}
       <div class="gi"><span class="k">Dimulai</span><span class="v">${fDT(a.started_at)}</span></div>
       <div class="gi"><span class="k">Selesai</span><span class="v">${fDT(a.finished_at)}</span></div>
-      <div class="gi"><span class="k">Waktu pengerjaan</span><span class="v">${dur(a.time_used || a.finished_at - a.started_at)}</span></div>
+      <div class="gi"><span class="k">Waktu pengerjaan</span><span class="v">${dur(attUsed(a))}</span></div>
+      ${attWall(a) - attUsed(a) > 120000 ? `<div class="gi"><span class="k">Total mulai–selesai</span><span class="v">${dur(attWall(a))}</span></div>` : ''}
+      ${a.pause_count ? `<div class="gi"><span class="k">Waktu dijeda</span><span class="v">${pauseText(a)}</span></div>` : ''}
       <div class="gi"><span class="k">Nilai</span><span class="v">${fNum(a.grade)} / ${fNum(q.max_grade)}</span></div>
       ${q.exam ? `<div class="gi"><span class="k">Pelanggaran ujian</span><span class="v">${a.violations ? `<span class="chip orange">${ic('alert', 'sm')} ${a.violations}</span>` : '0'}${d.role === 'teacher' && a.vlog && a.vlog.length ? ` <button class="btn btn-plain btn-sm" data-act="rvLog">Lihat log</button>` : ''}</span></div>` : ''}</div>
       <div class="qnav" style="margin-top:14px">${d.items.map((it, k) => `<button class="qn ${it.response === null ? '' : !d.showAnswers ? 'ans' : it.fraction >= 1 ? 'ok' : it.fraction > 0 ? 'part' : 'bad'}" data-act="rvJump" data-k="${k}">${k + 1}</button>`).join('')}</div>
@@ -3666,8 +3679,8 @@ const A = {
     reloadModule();
   },
   resExport: () => {
-    const d = S.mod, ex = !!d.exam, rows = [['Nama', 'Kelas', 'Mulai', 'Selesai', 'Durasi', 'Terputus (kali)', 'Lama terputus'].concat(ex ? ['Pelanggaran', 'Rincian pelanggaran'] : [], ['Poin', 'Nilai (maks ' + d.module.max_grade + ')'])];
-    d.attempts.filter(a => a.status === 'finished').forEach(a => rows.push([a.user.name, a.user.kelas || '', fDT(a.started_at), fDT(a.finished_at), dur(a.time_used || a.finished_at - a.started_at), a.pause_count || 0, a.pause_count ? dur(a.pause_ms) : ''].concat(ex ? [a.violations || 0, (a.vlog || []).filter(e => e.v).map(e => new Date(e.t).toLocaleTimeString('id-ID') + ' ' + (EXAM_LBL[e.type] || e.type)).join('; ')] : [], [a.score + '/' + a.max_score, String(a.grade).replace('.', ',')])));
+    const d = S.mod, ex = !!d.exam, rows = [['Nama', 'Kelas', 'Mulai', 'Selesai', 'Durasi dihitung', 'Total mulai–selesai', 'Detik per soal', 'Terputus (kali)', 'Lama dijeda'].concat(ex ? ['Pelanggaran', 'Rincian pelanggaran'] : [], ['Poin', 'Nilai (maks ' + d.module.max_grade + ')'])];
+    d.attempts.filter(a => a.status === 'finished').forEach(a => rows.push([a.user.name, a.user.kelas || '', fDT(a.started_at), fDT(a.finished_at), dur(attUsed(a)), dur(attWall(a)), attPace(a) ? Math.round(attPace(a)) : '', a.pause_count || 0, a.pause_count ? dur(a.pause_ms) : ''].concat(ex ? [a.violations || 0, (a.vlog || []).filter(e => e.v).map(e => new Date(e.t).toLocaleTimeString('id-ID') + ' ' + (EXAM_LBL[e.type] || e.type)).join('; ')] : [], [a.score + '/' + a.max_score, String(a.grade).replace('.', ',')])));
     downloadFile('hasil-' + d.module.title.replace(/[^\w]+/g, '-').slice(0, 40) + '.csv', toCSV(rows));
   },
   pick: b => {

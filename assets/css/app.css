@@ -1030,3 +1030,6 @@ html.exam-on .sidebar, html.exam-on .tabbar, html.exam-on .tb-actions, html.exam
 /* Tinjauan kuis saat kunci jawaban disembunyikan */
 .rv-badge { background: color-mix(in srgb, var(--text-2) 12%, transparent); color: var(--text-2); }
 .rv-badge.neu { background: color-mix(in srgb, var(--tint) 14%, transparent); color: var(--blue-t); }
+
+/* Ujian: saat terputus, soal tidak terlihat di balik layar "Koneksi terputus" */
+html.exam-on .att-off { background: rgba(10, 14, 30, .9); -webkit-backdrop-filter: blur(40px) saturate(1.1); backdrop-filter: blur(40px) saturate(1.1); }

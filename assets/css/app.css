@@ -1026,3 +1026,7 @@ html.exam-on img { -webkit-user-drag: none; pointer-events: none; }
 /* Selama ujian: hanya soal yang tampil (menu, pencarian, notifikasi, profil disembunyikan) */
 html.exam-on #app { grid-template-columns: minmax(0, 1fr); }
 html.exam-on .sidebar, html.exam-on .tabbar, html.exam-on .tb-actions, html.exam-on #tbBack { display: none !important; }
+
+/* Tinjauan kuis saat kunci jawaban disembunyikan */
+.rv-badge { background: color-mix(in srgb, var(--text-2) 12%, transparent); color: var(--text-2); }
+.rv-badge.neu { background: color-mix(in srgb, var(--tint) 14%, transparent); color: var(--blue-t); }

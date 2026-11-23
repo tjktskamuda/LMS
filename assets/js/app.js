@@ -6,8 +6,8 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.5.1';
-const MIN_API = '2.5.1';
+const APP_VERSION = '2.5.2';
+const MIN_API = '2.5.2';
 const TAB_ID = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);   // identitas tab ini (mode ujian: satu perangkat/tab)   // versi Code.gs yang dibutuhkan semua fitur tampilan ini
 const markReady = () => { window.__LMS_READY = true; };
 
@@ -1233,7 +1233,7 @@ function renderDashboard(d, anim) {
 function serverOldHTML() {
   const v = S.settings && S.settings.version;
   if (DEMO || !v || !verLess(v, MIN_API)) return '';
-  return `<section class="server-old glass"><span class="so-ic">${ic('alert')}</span><div class="grow"><b>Code.gs di server masih v${esc(v)} — perlu diperbarui ke v${MIN_API}</b><p>Sebelum diperbarui, fitur & perbaikan terbaru belum aktif di server (mode ujian anti-curang, kuis lanjut setelah mati listrik/internet putus, impor siswa dikenali dari NISN, perlindungan pesan diskusi). Salin Code.gs terbaru dari halaman Pasang, tempel di Apps Script, lalu Terapkan → Kelola deployment → Versi baru.</p></div><a class="btn btn-tinted btn-sm" href="setup.html" target="_blank" rel="noopener">${ic('link', 'sm')} Buka halaman Pasang</a></section>`;
+  return `<section class="server-old glass"><span class="so-ic">${ic('alert')}</span><div class="grow"><b>Code.gs di server masih v${esc(v)} — perlu diperbarui ke v${MIN_API}</b><p>Sebelum diperbarui, fitur & perbaikan terbaru belum aktif di server (kunci jawaban yang dimatikan benar-benar tidak dikirim ke siswa, mode ujian anti-curang, kuis lanjut setelah mati listrik/internet putus, impor siswa dikenali dari NISN). Salin Code.gs terbaru dari halaman Pasang, tempel di Apps Script, lalu Terapkan → Kelola deployment → Versi baru.</p></div><a class="btn btn-tinted btn-sm" href="setup.html" target="_blank" rel="noopener">${ic('link', 'sm')} Buka halaman Pasang</a></section>`;
 }
 function openQuizHTML(list) {
   if (!list || !list.length) return '';
@@ -1587,7 +1587,7 @@ function openModuleForm(type, o) {
   if (type === 'quiz') {
     body += dates('Dibuka', 'Ditutup') + `<div class="row3">${fInput('time_limit', 'Batas waktu (menit)', m ? cfg.time_limit || 0 : asExam ? 90 : 30, { type: 'number', attrs: 'min="0" max="600"', hint: '0 = tanpa batas' })}${fInput('attempts', 'Kesempatan', m ? cfg.attempts || 0 : 1, { type: 'number', attrs: 'min="0" max="50"', hint: '0 = tak terbatas' })}${fInput('max_grade', 'Nilai maksimal', m ? m.max_grade : 100, { type: 'number', attrs: 'min="1" max="1000"' })}</div>
       <div class="row2">${fSelect('grade_method', 'Metode penilaian', Object.keys(GM).map(k => [k, GM[k]]), cfg.grade_method || 'highest')}${fInput('pick', 'Jumlah soal yang tampil', m ? cfg.pick || 0 : 0, { type: 'number', attrs: 'min="0" max="500"', hint: '0 = semua soal. Isi mis. 25 → tiap siswa mendapat 25 soal acak dari bank soal.' })}</div>
-      <div class="opt-stack">${fSwitch('shuffle', 'Acak urutan soal', 'Setiap siswa mendapat urutan soal berbeda.', m ? !!cfg.shuffle : asExam)}${fSwitch('shuffle_options', 'Acak urutan opsi jawaban', 'Untuk soal pilihan ganda.', m ? !!cfg.shuffle_options : true)}${fSwitch('review', 'Tampilkan kunci jawaban', 'Siswa dapat melihat jawaban benar setelah selesai.', m ? cfg.review !== false : !asExam)}${fSwitch('pause_offline', 'Jeda waktu saat internet terputus', 'Untuk kuis berbatas waktu: sisa waktu tidak berkurang selama koneksi siswa putus, lalu siswa melanjutkan dengan soal yang sama.', cfg.pause_offline !== false)}</div>
+      <div class="opt-stack">${fSwitch('shuffle', 'Acak urutan soal', 'Setiap siswa mendapat urutan soal berbeda.', m ? !!cfg.shuffle : asExam)}${fSwitch('shuffle_options', 'Acak urutan opsi jawaban', 'Untuk soal pilihan ganda.', m ? !!cfg.shuffle_options : true)}${fSwitch('review', 'Tampilkan kunci jawaban', 'Aktif: siswa melihat jawaban benar & tanda benar/salah per soal setelah selesai. Mati: siswa hanya melihat nilai akhir dan jawabannya sendiri.', m ? cfg.review !== false : !asExam)}${fSwitch('pause_offline', 'Jeda waktu saat internet terputus', 'Untuk kuis berbatas waktu: sisa waktu tidak berkurang selama koneksi siswa putus, lalu siswa melanjutkan dengan soal yang sama.', cfg.pause_offline !== false)}</div>
       ${asExam ? examFormHTML(cfg) : ''}`;
   }
   if (type === 'forum') body += fSwitch('teacher_only', 'Hanya guru yang dapat memulai diskusi', 'Cocok untuk forum pengumuman. Siswa tetap dapat membalas.', !!cfg.teacher_only);
@@ -2001,6 +2001,7 @@ function quizInfoGroup(d) {
     ${c.time_limit ? `<div class="gi"><span class="k">Jika internet terputus</span><span class="v">${d.pauseOffline ? 'Waktu dijeda — lanjutkan dengan soal & sisa waktu yang sama' : 'Waktu tetap berjalan'}</span></div>` : ''}
     <div class="gi"><span class="k">Kesempatan mengerjakan</span><span class="v">${c.attempts ? c.attempts + ' kali' : 'Tak terbatas'}</span></div>
     <div class="gi"><span class="k">Metode penilaian</span><span class="v">${GM[c.grade_method] || GM.highest}</span></div>
+    <div class="gi"><span class="k">Kunci jawaban setelah selesai</span><span class="v">${c.review !== false ? 'Ditampilkan' : 'Tidak ditampilkan — hanya nilai akhir'}</span></div>
     <div class="gi"><span class="k">Jumlah soal</span><span class="v">${quizCountText(d)}</span></div>
     ${d.exam ? `<div class="gi"><span class="k">Mode ujian</span><span class="v">${ic('shield', 'sm')} Anti-curang aktif · batas ${d.exam.max} pelanggaran → ${d.exam.action === 'lock' ? 'dikunci' : d.exam.action === 'submit' ? 'dikirim otomatis' : 'dicatat'}</span></div>
     <div class="gi"><span class="k">Pengawasan</span><span class="v">${[d.exam.fullscreen ? 'layar penuh' : '', 'deteksi keluar aplikasi/tab', d.exam.copy ? 'salin-tempel diblokir' : '', d.exam.single ? 'satu perangkat' : '', d.exam.watermark ? 'watermark' : ''].filter(Boolean).join(' · ')}</span></div>
@@ -2973,6 +2974,8 @@ async function pageReview(id) {
   const a = d.attempt, q = d.quiz, pct = q.max_grade ? a.grade / q.max_grade * 100 : 0, fresh = S.justFinished === id;
   S.justFinished = null;
   setChrome({ title: q.title, back: '/mod/' + q.id });
+  if (!d.showAnswers) d.items.forEach(it => { delete it.correct; delete it.fraction; delete it.score; });   // server lama masih mengirim tanda benar/salah
+  RV_WHO = d.role === 'teacher' && d.user && S.user && d.user.id !== S.user.id ? 'Jawaban siswa' : 'Jawaban Anda';
   const color = pct >= 75 ? 'var(--green)' : pct >= 55 ? 'var(--orange)' : 'var(--red)';
   const msg = pct >= 90 ? 'Luar biasa! 🏆' : pct >= 75 ? 'Kerja bagus! 🎉' : pct >= 55 ? 'Cukup baik, terus berlatih 💪' : 'Jangan menyerah, pelajari lagi ya 📚';
   const conf = fresh && pct >= 75 ? `<div class="confetti">${Array.from({ length: 46 }, (_, i) => `<i style="left:${(i * 2.2 + Math.random() * 3).toFixed(1)}%;background:${['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#af52de', '#ff2d55'][i % 7]};--dx:${(Math.random() * 120 - 60) | 0}px;--rot:${(Math.random() * 720 - 360) | 0}deg;animation-delay:${(Math.random() * .5).toFixed(2)}s"></i>`).join('')}</div>` : '';
@@ -2980,6 +2983,7 @@ async function pageReview(id) {
     <div class="split"><div class="stack stg">
       <section class="result-hero glass">${conf}${ringBox(pct, 150, `<div style="line-height:1"><div style="font-size:40px">${fNum(a.grade)}</div><div style="font-size:13px;color:var(--text-2);font-weight:600;margin-top:4px">dari ${fNum(q.max_grade)}</div></div>`, color)}
         <h2>${d.role === 'teacher' && d.user ? esc(d.user.name) : msg}</h2><p class="muted" style="margin:0">${fNum(a.score)} dari ${fNum(a.max_score)} poin · ${fNum(pct)}%${a.preview ? ' · Pratinjau guru' : ''}</p></section>
+      ${reviewNoteHTML(d)}
       ${d.items.map((it, k) => reviewItemHTML(it, k, d.showAnswers)).join('')}
     </div>
     <div class="stack"><section class="card glass" style="position:sticky;top:90px"><div class="card-h"><h3>Ringkasan</h3></div><div class="group">
@@ -2989,10 +2993,33 @@ async function pageReview(id) {
       <div class="gi"><span class="k">Waktu pengerjaan</span><span class="v">${dur(a.time_used || a.finished_at - a.started_at)}</span></div>
       <div class="gi"><span class="k">Nilai</span><span class="v">${fNum(a.grade)} / ${fNum(q.max_grade)}</span></div>
       ${q.exam ? `<div class="gi"><span class="k">Pelanggaran ujian</span><span class="v">${a.violations ? `<span class="chip orange">${ic('alert', 'sm')} ${a.violations}</span>` : '0'}${d.role === 'teacher' && a.vlog && a.vlog.length ? ` <button class="btn btn-plain btn-sm" data-act="rvLog">Lihat log</button>` : ''}</span></div>` : ''}</div>
-      <div class="qnav" style="margin-top:14px">${d.items.map((it, k) => `<button class="qn ${it.response === null ? '' : it.fraction >= 1 ? 'ok' : it.fraction > 0 ? 'part' : 'bad'}" data-act="rvJump" data-k="${k}">${k + 1}</button>`).join('')}</div>
+      <div class="qnav" style="margin-top:14px">${d.items.map((it, k) => `<button class="qn ${it.response === null ? '' : !d.showAnswers ? 'ans' : it.fraction >= 1 ? 'ok' : it.fraction > 0 ? 'part' : 'bad'}" data-act="rvJump" data-k="${k}">${k + 1}</button>`).join('')}</div>
       <button class="btn btn-primary w100" style="margin-top:14px" data-go="/mod/${q.id}">${q.exam ? 'Kembali ke ujian' : 'Kembali ke kuis'}</button></section></div></div>`);
 }
+let RV_WHO = 'Jawaban Anda';
+/* Catatan di tinjauan: siswa saat kunci jawaban disembunyikan, atau guru agar tahu apa yang dilihat siswa. */
+function reviewNoteHTML(d) {
+  if (!d.showAnswers) return `<div class="pick-note">${ic('eyeoff')}<div><b>Kunci jawaban tidak ditampilkan</b><div>Guru menyembunyikan kunci jawaban dan koreksi per soal untuk ${d.quiz.exam ? 'ujian' : 'kuis'} ini. Anda hanya dapat melihat nilai akhir dan jawaban yang Anda pilih.</div></div></div>`;
+  if (d.role === 'teacher' && d.studentSees === false) return `<div class="pick-note">${ic('eyeoff')}<div><b>Siswa tidak melihat kunci jawaban</b><div>Tanda benar/salah, poin per soal, dan jawaban benar di bawah hanya tampil untuk guru. Siswa hanya melihat nilai akhir dan jawabannya sendiri.</div></div></div>`;
+  return '';
+}
+/* Kunci disembunyikan: tampilkan soal & jawaban siswa saja — tanpa warna benar/salah, tanpa poin per soal. */
+function reviewItemHiddenHTML(it, k) {
+  const r = it.response;
+  const badge = r === null || (Array.isArray(r) && !r.length) || r === '' ? '<span class="rv-badge">Tidak dijawab</span>' : '<span class="rv-badge neu">Dijawab</span>';
+  let body = '';
+  if (it.type === 'mc' || it.type === 'multi') {
+    const R = it.type === 'mc' ? (r === null ? [] : [r]) : (r || []);
+    body = `<div class="opts">${it.options.map((o, j) => { const picked = R.indexOf(o.i) >= 0; return `<div class="opt static ${picked ? 'on' : ''}"><span class="ol">${LETTERS[j]}</span><span class="ot">${esc(o.t)}</span>${picked ? `<span class="chip">${RV_WHO}</span>` : ''}</div>`; }).join('')}</div>`;
+  } else if (it.type === 'tf') {
+    body = `<div class="tf">${[[true, 'Benar'], [false, 'Salah']].map(x => `<div class="opt static ${r === x[0] ? 'on' : ''}">${x[1]}</div>`).join('')}</div>`;
+  } else {
+    body = `<div class="group"><div class="gi"><span class="k">${RV_WHO}</span><span class="v">${r === null || r === '' ? '<span class="faint">—</span>' : esc(r)}</span></div></div>`;
+  }
+  return `<section class="qcard glass" id="rv-${k}"><div class="q-head"><span class="q-no">Soal ${k + 1}</span>${badge}<span class="grow"></span><span class="chip">${fNum(it.points)} poin</span></div><div class="q-text rich">${sanitize(it.text)}</div>${body}</section>`;
+}
 function reviewItemHTML(it, k, show) {
+  if (!show) return reviewItemHiddenHTML(it, k);
   const r = it.response, c = it.correct;
   const badge = r === null ? '<span class="rv-badge bad">Tidak dijawab</span>' : it.fraction >= 1 ? `<span class="rv-badge ok">${ic('check', 'sm')} Benar</span>` : it.fraction > 0 ? '<span class="rv-badge part">Sebagian benar</span>' : `<span class="rv-badge bad">${ic('x', 'sm')} Salah</span>`;
   let body = '';
@@ -3001,12 +3028,12 @@ function reviewItemHTML(it, k, show) {
     body = `<div class="opts">${it.options.map((o, j) => {
       const picked = R.indexOf(o.i) >= 0, right = C ? C.indexOf(o.i) >= 0 : (picked && it.fraction >= 1);
       const cls = right && (picked || show) ? 'correct' : picked ? 'wrong' : '';
-      return `<div class="opt static ${cls}"><span class="ol">${LETTERS[j]}</span><span class="ot">${esc(o.t)}</span>${picked ? '<span class="chip">Jawaban Anda</span>' : ''}</div>`;
+      return `<div class="opt static ${cls}"><span class="ol">${LETTERS[j]}</span><span class="ot">${esc(o.t)}</span>${picked ? `<span class="chip">${RV_WHO}</span>` : ''}</div>`;
     }).join('')}</div>`;
   } else if (it.type === 'tf') {
     body = `<div class="tf">${[[true, 'Benar'], [false, 'Salah']].map(x => { const picked = r === x[0], right = c !== undefined ? c === x[0] : (picked && it.fraction >= 1); return `<div class="opt static ${right && (picked || show) ? 'correct' : picked ? 'wrong' : ''}">${x[1]}</div>`; }).join('')}</div>`;
   } else {
-    body = `<div class="group"><div class="gi"><span class="k">Jawaban Anda</span><span class="v">${r === null ? '<span class="faint">—</span>' : esc(r)}</span></div>${c ? `<div class="gi"><span class="k">Jawaban diterima</span><span class="v">${c.map(esc).join(', ')}</span></div>` : ''}</div>`;
+    body = `<div class="group"><div class="gi"><span class="k">${RV_WHO}</span><span class="v">${r === null ? '<span class="faint">—</span>' : esc(r)}</span></div>${c ? `<div class="gi"><span class="k">Jawaban diterima</span><span class="v">${c.map(esc).join(', ')}</span></div>` : ''}</div>`;
   }
   return `<section class="qcard glass" id="rv-${k}"><div class="q-head"><span class="q-no">Soal ${k + 1}</span>${badge}<span class="grow"></span><span class="chip">${fNum(it.score)} / ${fNum(it.points)} poin</span></div><div class="q-text rich">${sanitize(it.text)}</div>${body}</section>`;
 }

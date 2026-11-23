@@ -29,7 +29,7 @@ const CONFIG = {
   MAX_UPLOAD_MB: 10,                // batas ukuran per berkas
   QUIZ_HEARTBEAT_SEC: 30,           // kuis berwaktu: perangkat siswa melapor ke server tiap N detik
   QUIZ_OFFLINE_SEC: 75,             // tanpa laporan lebih dari N detik = dianggap terputus (waktu dijeda)
-  VERSION: '2.5.1'
+  VERSION: '2.5.2'
 };
 
 /* ---------------------------------------------------------------------------
@@ -1788,26 +1788,32 @@ function actReview_(ctx, p) {
   const a = moduleAccess_(u, t.module_id), m = a.module, isT = a.role === 'teacher';
   if (!isT && t.user_id !== u.id) fail_('Anda tidak berhak melihat percobaan ini.');
   if (t.status !== 'finished') fail_('Percobaan belum selesai.');
-  const cfg = json_(m.config, {}), showAns = isT || cfg.review !== false;
+  // "Tampilkan kunci jawaban" dimatikan → siswa hanya menerima nilai akhir dan jawabannya sendiri.
+  // Tanda benar/salah & poin per soal juga tidak dikirim, karena dari situ kunci jawaban bisa ditebak
+  // (mis. soal Benar/Salah, atau dibandingkan antar-percobaan).
+  const cfg = json_(m.config, {}), studentSees = cfg.review !== false, showAns = isT || studentSees;
   const qById = mapBy_(DB.where('Questions', function (q) { return q.module_id === m.id; }), 'id');
   const answers = json_(t.answers, {});
   const items = json_(t.layout, []).map(function (L) {
     const q = qById[L.q];
     if (!q) return null;
-    const opts = json_(q.options, []), fr = scoreQuestion_(q, answers[q.id]), pts = num_(q.points, 1);
+    const opts = json_(q.options, []), pts = num_(q.points, 1);
     const o = {
-      id: q.id, type: q.type, text: q.text, points: pts, score: round2_(fr * pts), fraction: fr,
+      id: q.id, type: q.type, text: q.text, points: pts,
       response: answers[q.id] === undefined ? null : answers[q.id],
       options: (q.type === 'mc' || q.type === 'multi') ? layoutOpts_(L.o, opts) : []
     };
-    if (showAns) o.correct = json_(q.answer, null);
+    if (showAns) {
+      const fr = scoreQuestion_(q, answers[q.id]);
+      o.score = round2_(fr * pts); o.fraction = fr; o.correct = json_(q.answer, null);
+    }
     return o;
   }).filter(Boolean);
   const owner = DB.get('Users', t.user_id);
   return {
     attempt: attOut_(t, isT ? {} : null), user: owner ? briefUser_(owner) : null, role: a.role,
     quiz: { id: m.id, title: m.title, course_id: m.course_id, max_grade: num_(m.max_grade, 100), exam: isExam_(m) },
-    items: items, showAnswers: showAns
+    items: items, showAnswers: showAns, studentSees: studentSees
   };
 }
 

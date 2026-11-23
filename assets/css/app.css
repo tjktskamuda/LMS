@@ -70,7 +70,13 @@ html[data-theme="dark"] {
   --scrim: rgba(0, 0, 0, .5);
   --w-base: #0b0d1c; --w1: #1d3fd0; --w2: #6a1fb5; --w3: #b0215d; --w4: #0d7d8a;
 }
-/* Wallpaper presets */
+/* Wallpaper presets (warna cadangan bila WebGL tidak tersedia) */
+html[data-wall="silk"] { --w-base: #f3e3dc; --w1: #ef5b3c; --w2: #3557d6; --w3: #ff9a6b; --w4: #e05a7a; }
+html[data-wall="pool"] { --w-base: #bfe8ff; --w1: #1c8fe3; --w2: #4fc2f5; --w3: #0f63c4; --w4: #7fe0e6; }
+html[data-wall="ribbons"] { --w-base: #eef0fb; --w1: #8b5cff; --w2: #3d7bff; --w3: #ff8a3d; --w4: #ff5fa8; }
+html[data-theme="dark"][data-wall="silk"] { --w-base: #12081a; --w1: #c2301b; --w2: #16309e; --w3: #e5602d; --w4: #6a1a40; }
+html[data-theme="dark"][data-wall="pool"] { --w-base: #02223f; --w1: #0b5fb6; --w2: #1f8ed6; --w3: #063f86; --w4: #0d7d8a; }
+html[data-theme="dark"][data-wall="ribbons"] { --w-base: #090717; --w1: #7b3cff; --w2: #2d5bff; --w3: #ff7a2f; --w4: #d23fc8; }
 html[data-wall="sunset"] { --w-base: #fbe9e1; --w1: #ff9a62; --w2: #ff5f8f; --w3: #ffd166; --w4: #b18cff; }
 html[data-wall="ocean"] { --w-base: #e3f1fb; --w1: #2ec5ff; --w2: #3a7bff; --w3: #6ef0d1; --w4: #9ab6ff; }
 html[data-wall="forest"] { --w-base: #e6f4ea; --w1: #3ccf91; --w2: #7bd86b; --w3: #1fb5a8; --w4: #e3e36b; }
@@ -151,9 +157,24 @@ html[data-theme="dark"] .glass::before { background: radial-gradient(220px circl
 .glass.thick { background: var(--g-bg-thick); -webkit-backdrop-filter: var(--g-blur-thick); backdrop-filter: var(--g-blur-thick); }
 .glass.flat { box-shadow: var(--g-inner); }
 
-/* Liquid refraction (Chromium desktop): filter SVG dibuat oleh JS per ukuran elemen */
-html.refract .lq-on { background: color-mix(in srgb, var(--g-bg) 70%, transparent); }
-html.refract .tabbar.lq-on, html.refract .sidebar.lq-on { background: color-mix(in srgb, var(--g-bg) 82%, transparent); }
+/* Kaca optik (WebGL, assets/js/glass.js): latar digambar di kanvas; panel & tombol kaca di atas latar
+   dibiaskan langsung oleh WebGL, jadi elemen DOM-nya transparan (tanpa blur CSS). */
+#glc { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+html.glr #wall .b, html.glr #wall::after { display: none; }
+html.glon .glo { background: transparent !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; box-shadow: none !important; }
+html.glon .glo::after { opacity: 0; }
+html.glon .glo::before { opacity: .4; }
+html.glon .glo.btn-glass:hover, html.glon .glo.tb-search:hover { background: transparent !important; }
+/* Teks yang langsung berada di atas latar bertekstur: beri bayangan agar tetap terbaca */
+:root { --gl-ts: 0 0 2px rgba(255,255,255,.6), 0 1px 14px rgba(255,255,255,.8); }
+html[data-theme="dark"] { --gl-ts: 0 1px 2px rgba(0,0,0,.5), 0 2px 18px rgba(0,0,0,.45); }
+html.glr .ph h1, html.glr .ph p, html.glr .ph .eyebrow, html.glr .crumbs, html.glr .crumbs a, html.glr .crumbs span, html.glr .tb-title,
+html.glr .mhead h1, html.glr .mhead .mt, html.glr .mhead .dates, html.glr .mhead .dates b, html.glr .ontop { text-shadow: var(--gl-ts); }
+html.glr .mhead .dates { color: var(--text); }
+html.glr .mhead .mt, html.glr .ontop { color: var(--text); opacity: .8; }
+html.glr .ph p, html.glr .crumbs, html.glr .crumbs a { color: var(--text); }
+html.glr .ph p { opacity: .82; }
+html.glr .ph .eyebrow { color: var(--text); opacity: .72; }
 
 /* Reduce transparency (aksesibilitas iOS) */
 html.reduce .glass, html.reduce .btn-glass, html.reduce .tabbar, html.reduce .menu, html.reduce .sheet { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }

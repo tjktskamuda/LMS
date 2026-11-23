@@ -6,7 +6,7 @@
 (function () {
 'use strict';
 window.__LMS_LOADED = true;
-const APP_VERSION = '2.6.0';
+const APP_VERSION = '2.7.0';
 const MIN_API = '2.6.0';
 const TAB_ID = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);   // identitas tab ini (mode ujian: satu perangkat/tab)   // versi Code.gs yang dibutuhkan semua fitur tampilan ini
 const markReady = () => { window.__LMS_READY = true; };
@@ -188,8 +188,9 @@ const QTYPES = [['mc', 'Pilihan Ganda'], ['multi', 'PG Kompleks'], ['tf', 'Benar
 const QTL = { mc: 'Pilihan ganda', multi: 'PG kompleks', tf: 'Benar/Salah', short: 'Isian singkat' };
 const GM = { highest: 'Nilai tertinggi', average: 'Rata-rata', first: 'Percobaan pertama', last: 'Percobaan terakhir' };
 const COVERS = [['#5ac8fa', '#007aff'], ['#ff9a62', '#ff3b6b'], ['#7d7aff', '#c044ff'], ['#30d158', '#00a39a'], ['#ffcc00', '#ff7a00'], ['#ff6b9d', '#c22d7a'], ['#64d2ff', '#5e5ce6'], ['#34c3a0', '#2f6fd6'], ['#f093fb', '#f5576c'], ['#0a84ff', '#30d1c8'], ['#ff8a5c', '#d6336c'], ['#8e8ef0', '#3f3fb5']];
-const WALLS = { aurora: ['#7aa7ff', '#c18cff', '#ff9ec7'], sunset: ['#ff9a62', '#ff5f8f', '#ffd166'], ocean: ['#2ec5ff', '#3a7bff', '#6ef0d1'], forest: ['#3ccf91', '#7bd86b', '#1fb5a8'], graphite: ['#9aa3b8', '#c3c7d1', '#8f9bb5'] };
-const WALL_NAMES = { aurora: 'Aurora', sunset: 'Senja', ocean: 'Samudra', forest: 'Hutan', graphite: 'Grafit' };
+const WALLS = { silk: ['#e2482f', '#2347c9', '#ff8a5c'], pool: ['#1f8fe0', '#58c3f2', '#0d5fb8'], ribbons: ['#7b3cff', '#2d6bff', '#ff7a2f'], aurora: ['#7aa7ff', '#c18cff', '#ff9ec7'], sunset: ['#ff9a62', '#ff5f8f', '#ffd166'], ocean: ['#2ec5ff', '#3a7bff', '#6ef0d1'], forest: ['#3ccf91', '#7bd86b', '#1fb5a8'], graphite: ['#9aa3b8', '#c3c7d1', '#8f9bb5'] };
+const WALL_NAMES = { silk: 'Sutra', pool: 'Kolam', ribbons: 'Pita', aurora: 'Aurora', sunset: 'Senja', ocean: 'Samudra', forest: 'Hutan', graphite: 'Grafit' };
+const GLWALL = (window.GlassGL && window.GlassGL.walls) || {};   // wallpaper bertekstur untuk kaca optik (glass.js)
 const USER_COLORS = ['#007AFF', '#5856D6', '#AF52DE', '#FF2D55', '#FF9500', '#34C759', '#30B0C7', '#FF3B30', '#5AC8FA', '#A2845E'];
 
 function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
@@ -329,78 +330,37 @@ async function swr(key, action, payload, render, skeleton) {
 }
 
 /* ---------------------------------------------------------------- preferences */
-function chromiumDesktop() { const ua = navigator.userAgent; return /(Chrome|Edg)\/\d+/.test(ua) && !/Mobile|Android|CriOS/i.test(ua); }
-let PREF = Object.assign({ theme: 'auto', wall: 'aurora', reduce: false, motion: !matchMedia('(pointer: coarse)').matches, refract: chromiumDesktop() }, LS.get('pref', {}));
+let PREF = Object.assign({ theme: 'auto', wall: 'silk', reduce: false, motion: false, glass: true }, LS.get('pref', {}));
+if ((PREF.v || 0) < 2) { PREF.wall = 'silk'; PREF.glass = true; PREF.motion = false; PREF.v = 2; delete PREF.refract; LS.set('pref', PREF); }   // tampilan baru: kaca optik
 function applyPrefs() {
   const h = document.documentElement;
   const sysDark = HOST_THEME ? HOST_THEME === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
   const dark = PREF.theme === 'dark' || (PREF.theme === 'auto' && sysDark);
   h.setAttribute('data-theme', dark ? 'dark' : 'light');
-  h.setAttribute('data-wall', WALLS[PREF.wall] ? PREF.wall : 'aurora');
+  h.setAttribute('data-wall', WALLS[PREF.wall] ? PREF.wall : 'silk');
   h.classList.toggle('reduce', !!PREF.reduce);
   h.classList.toggle('motion', !!PREF.motion && !reduceMotion());
-  h.classList.toggle('refract', !!PREF.refract && chromiumDesktop() && !PREF.reduce);
+  glassApply(dark);
 }
 function setPref(k, v) { PREF[k] = v; LS.set('pref', PREF); applyPrefs(); lgRefresh(); }
 
-/* ---------------------------------------------------------------- liquid glass refraction (Chromium) */
-const LG = { cache: {}, n: 0, ro: null };
-function lgMap(w, h, r, bezel) {
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  const ctx = c.getContext('2d'), img = ctx.createImageData(w, h), d = img.data, hw = w / 2, hh = h / 2;
-  r = Math.min(r, hw, hh);
-  const sdf = (x, y) => { const qx = Math.abs(x - hw) - (hw - r), qy = Math.abs(y - hh) - (hh - r); return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r; };
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const px = x + .5, py = y + .5, inside = -sdf(px, py), i = (y * w + x) * 4;
-      let dx = 0, dy = 0;
-      if (inside > 0 && inside < bezel) {
-        const gx = sdf(px + .5, py) - sdf(px - .5, py), gy = sdf(px, py + .5) - sdf(px, py - .5), gl = Math.hypot(gx, gy) || 1;
-        const t = 1 - inside / bezel, m = Math.pow(t, 2.2);
-        dx = -gx / gl * m; dy = -gy / gl * m;
-      }
-      d[i] = Math.round(128 + dx * 127); d[i + 1] = Math.round(128 + dy * 127); d[i + 2] = 128; d[i + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  return c.toDataURL();
+/* ---------------------------------------------------------------- kaca optik (WebGL, lihat glass.js) */
+let GL_INIT = false;
+function glassApply(dark) {
+  const G = window.GlassGL;
+  if (!G) return;
+  if (!GL_INIT) { GL_INIT = true; G.init(document.getElementById('wall')); }
+  if (!G.ok) return;
+  const wall = WALLS[PREF.wall] ? PREF.wall : 'silk', pal = G.palette(wall, dark);
+  G.config({ mode: pal.mode, colors: pal.colors, dark: !!dark, motion: !!PREF.motion && !reduceMotion(), enabled: !!PREF.glass && !PREF.reduce });
 }
-function lgFilter(w, h, r, blur) {
-  const key = w + 'x' + h + 'r' + r + 'b' + blur;
-  if (LG.cache[key]) return LG.cache[key];
-  const defs = $('#lgDefs');
-  if (!defs) return null;
-  const id = 'lgf' + (++LG.n), bezel = Math.max(6, Math.min(30, Math.min(w, h) * .42)), scale = Math.round(bezel * 1.9);
-  const f = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
-  ['id', id, 'x', 0, 'y', 0, 'width', w, 'height', h, 'filterUnits', 'userSpaceOnUse', 'color-interpolation-filters', 'sRGB'].forEach((v, i, a) => { if (i % 2 === 0) f.setAttribute(v, a[i + 1]); });
-  f.innerHTML = `<feGaussianBlur in="SourceGraphic" stdDeviation="${blur}" edgeMode="duplicate" result="b"/><feImage href="${lgMap(w, h, r, bezel)}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none" result="m"/><feDisplacementMap in="b" in2="m" scale="${scale}" xChannelSelector="R" yChannelSelector="G" result="d"/><feColorMatrix in="d" type="saturate" values="1.75"/>`;
-  defs.appendChild(f);
-  LG.cache[key] = id;
-  return id;
+function wallThumb(k) {
+  const G = window.GlassGL, dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  if (G && G.ok && GLWALL[k]) { const u = G.thumb(GLWALL[k].mode, dark ? GLWALL[k].dark : GLWALL[k].light, dark, 148, 148); if (u) return `url(${u}) center/cover`; }
+  return `radial-gradient(circle at 20% 20%,${WALLS[k][0]},transparent 60%),radial-gradient(circle at 80% 30%,${WALLS[k][1]},transparent 60%),radial-gradient(circle at 50% 90%,${WALLS[k][2]},transparent 65%),var(--fill)`;
 }
-function lgApply(el) {
-  if (!el) return;
-  const on = document.documentElement.classList.contains('refract');
-  const w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight);
-  if (!on || !w || !h) { el.style.removeProperty('backdrop-filter'); el.style.removeProperty('-webkit-backdrop-filter'); el.classList.remove('lq-on'); return; }
-  const r = Math.round(parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0);
-  const id = lgFilter(w, h, Math.min(r, w / 2, h / 2), +el.dataset.lgb || 6);
-  if (!id) return;
-  el.style.setProperty('backdrop-filter', 'url(#' + id + ')');
-  el.classList.add('lq-on');
-  el._lgSize = w + 'x' + h;
-}
-function lgRefresh() {
-  const els = $$('.lg-el');
-  if (!LG.ro && window.ResizeObserver) LG.ro = new ResizeObserver(en => en.forEach(e => {
-    const el = e.target;
-    if (el.classList.contains('lq-on') && (Math.round(el.offsetWidth) + 'x' + Math.round(el.offsetHeight)) === el._lgSize) return;
-    el.style.removeProperty('backdrop-filter'); el.classList.remove('lq-on');
-    clearTimeout(el._lgT); el._lgT = setTimeout(() => lgApply(el), 180);
-  }));
-  els.forEach(el => { lgApply(el); if (LG.ro && !el._lgObs) { LG.ro.observe(el); el._lgObs = true; } });
-}
+
+function lgRefresh() { if (window.GlassGL && window.GlassGL.ok) window.GlassGL.refresh(); }
 try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (PREF.theme === 'auto') applyPrefs(); }); } catch (e) { /* lama */ }
 
 /* ---------------------------------------------------------------- UI: toast, sheet, alert, menu */
@@ -1060,7 +1020,7 @@ function renderShell() {
   markReady();
   const u = S.user, mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   $('#root').innerHTML = `<div id="app">
-    <aside class="sidebar glass lg-el" data-lgb="14">
+    <aside class="sidebar glass">
       <div class="brand" data-go="/dashboard"><div class="app-icon">${ic('grad')}</div><div class="grow" style="min-width:0"><b id="brandName" class="ellipsis">${esc(S.settings.site_name)}</b><small id="brandSchool" class="ellipsis">${esc(S.settings.school_name)}</small></div></div>
       <nav class="nav" id="nav"><i class="lens"></i>${navItems().map(n => `<button class="nav-item" data-go="${n.path}" data-nav="${n.path}"><span class="ni" style="--c1:${n.c[0]};--c2:${n.c[1]}">${ic(n.icon)}</span>${esc(n.label)}</button>`).join('')}</nav>
       <div class="nav-sec">Mapel Saya</div>
@@ -1068,19 +1028,19 @@ function renderShell() {
       <div class="side-foot"><div class="me-chip" data-act="meMenu" id="meChip"></div></div>
     </aside>
     <main>
-      <header class="topbar glass lg-el" data-lgb="9" id="topbar">
-        <button class="btn btn-glass btn-icon hidden lg-el" data-lgb="3" id="tbBack" aria-label="Kembali">${ic('left')}</button>
+      <header class="topbar glass" id="topbar">
+        <button class="btn btn-glass btn-icon hidden" id="tbBack" aria-label="Kembali">${ic('left')}</button>
         <div class="tb-title" id="tbTitle"></div>
         <div class="tb-actions">
           <div id="tbExtra" class="row"></div>
-          <button class="tb-search lg-el" data-lgb="4" data-act="spot" aria-label="Cari">${ic('search', 'sm')}<span>Cari mapel, materi…</span><kbd>${mac ? '⌘' : 'Ctrl'} K</kbd></button>
-          <button class="btn btn-glass btn-icon lg-el" data-lgb="3" data-act="notifs" id="bellBtn" aria-label="Notifikasi" style="position:relative">${ic('bell')}</button>
+          <button class="tb-search" data-act="spot" aria-label="Cari">${ic('search', 'sm')}<span>Cari mapel, materi…</span><kbd>${mac ? '⌘' : 'Ctrl'} K</kbd></button>
+          <button class="btn btn-glass btn-icon" data-act="notifs" id="bellBtn" aria-label="Notifikasi" style="position:relative">${ic('bell')}</button>
           <button class="btn btn-icon" data-act="meMenu" id="tbAvatar" aria-label="Akun" style="background:none">${av(u, 'sm')}</button>
         </div>
       </header>
       <div id="view"></div>
     </main>
-    <nav class="tabbar glass lg-el" data-lgb="5" id="tabbar"><div class="tabs"><i class="lens"></i>${tabItems().map(t => `<button data-go="${t[0]}" data-nav="${t[0]}">${ic(t[2])}<span>${t[1]}</span></button>`).join('')}</div></nav>
+    <nav class="tabbar glass" id="tabbar"><div class="tabs"><i class="lens"></i>${tabItems().map(t => `<button data-go="${t[0]}" data-nav="${t[0]}">${ic(t[2])}<span>${t[1]}</span></button>`).join('')}</div></nav>
   </div>`;
   renderNavCourses();
   renderMeChip();
@@ -1462,7 +1422,7 @@ function renderCourseContent(d, anim) {
   const index = `<aside class="cindex glass"><h5>Indeks mapel</h5>${d.sections.map(s => `<div class="ci-sec" data-act="ciGo" data-t="sec-${s.id}">${ic('down', 'xs')}<span class="ellipsis">${esc(s.title)}</span></div>${s.modules.filter(m => m.type !== 'label').map(m => `<div class="ci-mod" data-act="ciGo" data-t="mod-${m.id}">${isT ? `<span class="tdot" data-p="${tOf(m).p}"></span>` : `<span class="cdot ${m.done ? 'on' : ''}">${m.done ? ic('check') : ''}</span>`}<span class="ellipsis">${esc(m.title)}</span></div>`).join('')}`).join('')}</aside>`;
   box.innerHTML = `<div class="course-layout">${index}<div>
     ${d.announcements && d.announcements[0] && Date.now() - d.announcements[0].created_at < 7 * 864e5 ? `<div class="card glass li click" data-act="openAnn" data-id="${d.announcements[0].id}" style="margin-bottom:16px;padding:14px 16px"><span class="aicon sm" data-p="interface">${ic('megaphone')}</span><div class="grow" style="min-width:0"><div class="lt ellipsis">${esc(d.announcements[0].title)}</div><div class="ls">Pengumuman terbaru · ${rel(d.announcements[0].created_at)}</div></div>${ic('right', 'sm chev')}</div>` : ''}
-    <div class="row between" style="margin:0 6px 12px"><span class="faint" style="font-size:13.5px">${d.sections.length} topik · ${nMods} aktivitas</span><div class="row" style="gap:4px"><button class="btn btn-plain btn-sm" data-act="mIndex">${ic('list', 'sm')} Indeks</button><button class="btn btn-plain btn-sm" data-act="collapseAll">${Object.keys(col).some(k => col[k]) ? 'Bentangkan semua' : 'Ciutkan semua'}</button></div></div>
+    <div class="row between" style="margin:0 6px 12px"><span class="faint ontop" style="font-size:13.5px">${d.sections.length} topik · ${nMods} aktivitas</span><div class="row" style="gap:4px"><button class="btn btn-plain btn-sm" data-act="mIndex">${ic('list', 'sm')} Indeks</button><button class="btn btn-plain btn-sm" data-act="collapseAll">${Object.keys(col).some(k => col[k]) ? 'Bentangkan semua' : 'Ciutkan semua'}</button></div></div>
     <div class="stg">${d.sections.map(s => sectionHTML(s, d, edit, col)).join('')}</div>
     ${edit ? `<button class="add-act" data-act="addSection" style="height:54px">${ic('plus')} Tambah topik</button>` : ''}
     ${!nMods && !edit ? `<div class="card glass">${emptyHTML('book', 'Mapel masih kosong', isT ? 'Aktifkan Mode edit di kanan atas untuk menambahkan materi dan aktivitas.' : 'Guru belum menambahkan materi.')}</div>` : ''}
@@ -3184,8 +3144,8 @@ function pageProfile() {
     <div class="stack stg">
       <section class="card glass"><div class="card-h"><h3>${ic('palette')} Tampilan</h3></div><div class="form">
         <div class="field"><label class="lbl">Tema</label><div class="seg block">${[['auto', 'Otomatis'], ['light', 'Terang'], ['dark', 'Gelap']].map(t => `<button class="${PREF.theme === t[0] ? 'on' : ''}" data-act="prefTheme" data-v="${t[0]}">${t[1]}</button>`).join('')}</div></div>
-        <div class="field"><label class="lbl">Wallpaper</label><div class="walls">${Object.keys(WALLS).map(k => `<button type="button" class="wall-opt ${PREF.wall === k ? 'on' : ''}" data-act="prefWall" data-v="${k}" style="background:radial-gradient(circle at 20% 20%,${WALLS[k][0]},transparent 60%),radial-gradient(circle at 80% 30%,${WALLS[k][1]},transparent 60%),radial-gradient(circle at 50% 90%,${WALLS[k][2]},transparent 65%),var(--fill)"><span>${WALL_NAMES[k]}</span></button>`).join('')}</div></div>
-        <div class="opt-stack">${prefSwitch('motion', 'Wallpaper bergerak', 'Animasi latar yang perlahan mengalir.')}${chromiumDesktop() ? prefSwitch('refract', 'Efek refraksi cair', 'Distorsi lensa kaca ala iOS (Chrome/Edge desktop).') : ''}${prefSwitch('reduce', 'Kurangi transparansi', 'Kaca lebih pekat agar teks lebih mudah dibaca.')}</div>
+        <div class="field"><label class="lbl">Wallpaper</label><div class="walls">${Object.keys(WALLS).map(k => `<button type="button" class="wall-opt ${PREF.wall === k ? 'on' : ''}" data-act="prefWall" data-v="${k}" style="background:${wallThumb(k)}"><span>${WALL_NAMES[k]}</span></button>`).join('')}</div></div>
+        <div class="opt-stack">${prefSwitch('motion', 'Wallpaper bergerak', 'Animasi latar yang perlahan mengalir.')}${window.GlassGL && window.GlassGL.ok ? prefSwitch('glass', 'Kaca optik', 'Kaca membiaskan latar seperti kaca sungguhan (refraksi & dispersi warna). Matikan bila perangkat terasa berat.') : ''}${prefSwitch('reduce', 'Kurangi transparansi', 'Kaca lebih pekat agar teks lebih mudah dibaca.')}</div>
       </div></section>
       <section class="card glass"><div class="group"><div class="gi"><span class="k">Bergabung</span><span class="v">${fDate(u.created_at)}</span></div><div class="gi"><span class="k">Login terakhir</span><span class="v">${fDT(u.last_login)}</span></div><div class="gi"><span class="k">Versi aplikasi</span><span class="v">${esc(S.settings.version || '1.0.0')}</span></div></div>
         ${serverInfoHTML()}
